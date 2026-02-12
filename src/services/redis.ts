@@ -1,7 +1,7 @@
 import { createClient } from 'redis';
 import { Logger } from "@origranot/ts-logger";
 import { configDotenv } from "dotenv";
-import { squareItem } from "@tessellate/common/src/squareTypes";
+import { squareItem } from "@tessellate-pos/common/src/squareTypes";
 
 configDotenv();
 

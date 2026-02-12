@@ -1,7 +1,7 @@
 import express from "express";
 import { Request, Response, Router } from "express";
 import {getItemsByLocationID} from "../services/redis";
-import { squareItem } from "@tessellate/common/src/squareTypes";
+import { squareItem } from "@tessellate-pos/common/src/squareTypes";
 import {Logger} from "@origranot/ts-logger";
 import {updateCatalogInCache} from "../server";
 

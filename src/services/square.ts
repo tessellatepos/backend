@@ -2,7 +2,7 @@ import {OrderLineItem, SquareClient, SquareEnvironment} from "square";
 import type {
     squareItem, squareItemCatalog, squareItemVariation, squareItemCategory, squareItemVariationLocationOverrides,
     squareHelperCategory, squareHelperItemVariation
-} from "@tessellate/common/src/squareTypes";
+} from "@tessellate-pos/common/src/squareTypes";
 import { configDotenv } from "dotenv";
 configDotenv();
 
