@@ -20,7 +20,8 @@
     "postgres": "^3.4.8",
     "redis": "^5.10.0",
     "square": "^44.0.0",
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "tslog": "^4.10.2"
   },
   "devDependencies": {
     "@tsconfig/node-ts": "^23.6.2",

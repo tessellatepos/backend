@@ -2,7 +2,7 @@ import express from "express";
 import { Request, Response, Router } from "express";
 import {getItemsByLocationID} from "../services/redis";
 import { squareItem } from "@tessellate-pos/common/src/squareTypes";
-import {Logger} from "@origranot/ts-logger";
+import {Logger} from "tslog";
 import {updateCatalogInCache} from "../server";
 
 export const itemRouter: Router = express.Router();
