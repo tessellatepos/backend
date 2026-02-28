@@ -1,15 +1,23 @@
-import express from 'express';
-import {getRedisClient, setItemByItemID, setItemsByLocationID} from './services/redis';
-import {fetchItems} from "./services/square";
-import {itemRouter} from "./endpoints/items";
-import {Logger} from "tslog";
+import express, { Router } from "express";
+import {
+    getRedisClient,
+    setItemByItemID,
+    setItemsByLocationID,
+} from "./services/redis";
+import { fetchItems } from "./services/square";
+import { itemRouter } from "./endpoints/items";
+import { configDeviceRouter } from "@/endpoints/config/devices";
+import { configSettingRouter } from "@/endpoints/config/settings";
+import { Logger } from "tslog";
 //@ts-expect-error I'm not planning on fixing these imports, doesn't cause any issues when linting
-import cors from 'cors';
+import cors from "cors";
+import { squareRouter } from "@/endpoints/square";
+import { IServerAPIRouter } from "@tessellate-pos/common/src/types/endpoints";
 
 const app = express();
 
 const corsOptions = {
-    origin: '*',
+    origin: "*",
 };
 
 app.use(cors(corsOptions));
@@ -23,13 +31,13 @@ export async function updateCatalogInCache() {
     const redis = await getRedisClient();
 
     if (!redis) {
-        throw new Error('Redis client not available');
+        throw new Error("Redis client not available");
     }
 
-    const catalog = await fetchItems()
-    logger.debug('updateCatalogInCache');
+    const catalog = await fetchItems();
+    logger.debug("updateCatalogInCache");
 
-    await setItemsByLocationID(catalog.items)
+    await setItemsByLocationID(catalog.items);
 
     // for (const item of catalog.items) {
     //     await setItemByItemID(item.id, item);
@@ -42,23 +50,29 @@ async function start() {
         const redis = await getRedisClient(); // await the async function
 
         if (!redis) {
-            throw new Error('Redis client not available');
+            throw new Error("Redis client not available");
         }
 
-       // Initial catalog update
+        // Initial catalog update
         await updateCatalogInCache();
 
-        app.use('/config/devices', itemRouter)
-        app.use('/config/system', itemRouter);
-        app.use('/items', itemRouter);
+        const routes: IServerAPIRouter<Router>[] = [
+            { endpoint: "/config/devices", router: configDeviceRouter },
+            { endpoint: "/config/system", router: configSettingRouter },
+            { endpoint: "/items", router: itemRouter },
+            { endpoint: "/square", router: squareRouter },
+        ];
+
+        routes.forEach((route) => {
+            app.use(route.endpoint, route.router);
+        });
         // start server after redis is ready
         const port = Number(process.env.PORT) || 3000;
         app.listen(port, () => {
             logger.info(`Server listening on ${port}`);
         });
-
     } catch (err) {
-        logger.error('Startup error:', err);
+        logger.error("Startup error:", err);
         process.exit(1);
     }
 }
