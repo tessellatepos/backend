@@ -17,7 +17,9 @@ bun.lockb
 /coverage
 
 # production
-/build
+/build/*
+/dist/*
+/drizzle/*
 
 # misc
 .DS_Store
