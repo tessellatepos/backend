@@ -1,7 +1,6 @@
 import express from "express";
 import { Request, Response, Router } from "express";
 import { Logger } from "tslog";
-import { getConfigSystem } from "@/services/db/configSystem";
 import {
     createConfigDevice,
     getConfigDeviceByPairingCode,
@@ -12,6 +11,7 @@ import {
     getAllConfigDevices,
 } from "@/services/db/configDevice";
 import { IConfigDevice } from "@tessellate-pos/common/src/types/database";
+import { getParamValue } from "@/utils/expressHelpers";
 
 export const configDeviceRouter: Router = express.Router();
 
@@ -23,23 +23,28 @@ configDeviceRouter.get("/", async (req, res) => {
     res.json(configSystems);
 });
 
-configDeviceRouter.get("/pair-device/", async (req: Request, res: Response) => {
-    logger.info(
-        `Received GET request for pairing device with query: ${JSON.stringify(req.query)}`,
-    );
+configDeviceRouter.get("/pair-device/", async (res: Response) => {
+    logger.info(`Received GET request for a new pairing device`);
     const config = await createConfigDevice();
     res.json(config);
 });
 
 configDeviceRouter.get(
-    "/pair-device/:deviceID",
+    "/pair-device/:pairingCode",
     async (req: Request, res: Response) => {
+        const pairingCode = getParamValue(req.params.pairingCode);
+
+        if (!pairingCode || pairingCode === "undefined") {
+            res.status(400).json({
+                message: "Invalid pairing code format",
+            });
+            return;
+        }
+
         logger.info(
-            `Received GET request for pairing device with paring code: ${req.params.paringCode}`,
+            `Received GET request for pairing device with paring code: ${pairingCode}`,
         );
-        const config = await getConfigDeviceByPairingCode(
-            req.params.paringCod[0],
-        );
+        const config = await getConfigDeviceByPairingCode(pairingCode);
 
         if (config) {
             const newConfig = {
@@ -59,26 +64,24 @@ configDeviceRouter.get(
 );
 
 configDeviceRouter.delete(
-    "/pair-device/:pairingCode",
+    "/pair-device/:deviceId",
     async (req: Request, res: Response) => {
+        const deviceId = getParamValue(req.params.deviceId);
+
+        if (!deviceId || deviceId === "undefined") {
+            res.status(400).json({
+                message: "Invalid deviceID",
+            });
+            return;
+        }
+
         logger.info(
-            `Received DELETE request for pairing device with paring code: ${req.params.pairingCode}`,
+            `Received DELETE request for pairing device with paring code: ${deviceId}`,
         );
 
-        const pairingCode = () => {
-            if (typeof req.params.pairingCode === "string") {
-                return req.params.pairingCode;
-            } else if (Array.isArray(req.params.pairingCode)) {
-                return req.params.pairingCode[0];
-            } else {
-                throw new Error("Invalid pairing code format");
-            }
-        };
+        const deleteDevice = await deleteConfigDevice(deviceId);
 
-        const deleteDevice = await deleteConfigDevice(pairingCode());
-
-        const checkDeleteDevice =
-            await getConfigDeviceByPairingCode(pairingCode());
+        const checkDeleteDevice = await getConfigDeviceByPairingCode(deviceId);
 
         if (!checkDeleteDevice) {
             res.status(200).json({
@@ -95,14 +98,28 @@ configDeviceRouter.delete(
 configDeviceRouter.put(
     "/pair-device/:pairingCode",
     async (req: Request, res: Response) => {
-        logger.info(
-            `Received PUT request for pairing device with ID: ${req.params.pairingCode[0]} and body: ${JSON.stringify(req.body)}`,
-        );
-        const dbConfig = await getConfigDeviceByPairingCode(
-            req.params.pairingCode[0],
-        );
+        const pairingCode = getParamValue(req.params.pairingCode);
 
-        const updatedConfig = req.body as IConfigDevice;
+        if (!pairingCode || pairingCode === "undefined") {
+            res.status(400).json({
+                message: "Invalid pairing code format",
+            });
+            return;
+        }
+
+        logger.info(
+            `Received PUT request for pairing device with ID: ${pairingCode} and body: ${JSON.stringify(req.body)}`,
+        );
+        const dbConfig = await getConfigDeviceByPairingCode(pairingCode);
+
+        const updatedConfig = req.body as Partial<IConfigDevice>;
+
+        if (!updatedConfig.device_hardware_id) {
+            res.status(400).json({
+                message: "Missing device_hardware_id in request body",
+            });
+            return;
+        }
 
         if (dbConfig != undefined && !dbConfig.paired_at) {
             const newConfig = {
@@ -125,33 +142,57 @@ configDeviceRouter.put(
     },
 );
 
-configDeviceRouter.get("/:deviceID", async (req: Request, res: Response) => {
-    logger.info(`Received GET request for device ID: ${req.params.deviceID}`);
-    const config = await getConfigDeviceByID(req.params.deviceID[0]);
+configDeviceRouter.get("/:deviceId", async (req: Request, res: Response) => {
+    const deviceId = getParamValue(req.params.deviceId);
+
+    if (!deviceId || deviceId === "undefined") {
+        res.status(400).json({
+            message: "Invalid deviceID",
+        });
+        return;
+    }
+
+    logger.info(`Received GET request for device ID: ${deviceId}`);
+    const config = await getConfigDeviceByID(deviceId);
     res.json(config);
 });
 
-configDeviceRouter.post("/:deviceID", async (req: Request, res: Response) => {
+configDeviceRouter.post("/:deviceId", async (req: Request, res: Response) => {
+    const deviceId = getParamValue(req.params.deviceId);
+
+    if (!deviceId || deviceId === "undefined") {
+        res.status(400).json({
+            message: "Invalid deviceID",
+        });
+        return;
+    }
+
     logger.info(
-        `Received POST request for device ID: ${req.params.deviceID} with body: ${JSON.stringify(req.body)}`,
+        `Received POST request for device ID: ${deviceId} with body: ${JSON.stringify(req.body)}`,
     );
     const updatedConfig = req.body as IConfigDevice;
-    updateConfigDevice(updatedConfig.id, updatedConfig);
+    await updateConfigDevice(updatedConfig.id, updatedConfig);
     res.json(updatedConfig);
 });
 
-configDeviceRouter.delete("/:deviceID", async (req: Request, res: Response) => {
-    logger.info(
-        `Received DELETE request for device ID: ${req.params.deviceID}`,
-    );
-    const config = await getConfigDeviceByID(req.params.deviceID[0]);
+configDeviceRouter.delete("/:deviceId", async (req: Request, res: Response) => {
+    const deviceId = getParamValue(req.params.deviceId);
+
+    if (!deviceId || deviceId === "undefined") {
+        res.status(400).json({
+            message: "Invalid deviceID",
+        });
+        return;
+    }
+
+    logger.info(`Received DELETE request for device ID: ${deviceId}`);
+    const config = await getConfigDeviceByID(deviceId);
     if (!config) {
         res.status(404).json({
             message: "Device configuration does not exist.",
         });
-        return;
     } else {
-        deleteConfigDevice(req.params.deviceID[0]);
+        await deleteConfigDevice(deviceId);
         res.status(200).json({
             message: "Device configuration deleted successfully",
         });

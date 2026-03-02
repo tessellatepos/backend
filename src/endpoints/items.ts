@@ -1,15 +1,30 @@
 import express from "express";
 import { Request, Response, Router } from "express";
-import { getItemsByLocationID } from "../services/redis";
+import { getItemsByLocationID } from "@/services/redis";
 import { squareItem } from "@tessellate-pos/common/src/types/squareTypes";
 import { Logger } from "tslog";
-import { updateCatalogInCache } from "../server";
+import { updateCatalogInCache } from "@/server";
+import { getParamValue } from "@/utils/expressHelpers";
 
 export const itemRouter: Router = express.Router();
 
 const logger = new Logger();
 
 // itemRouter.get("/items/:itemId", async (req: Request, res: Response) => {});
+
+itemRouter.get(
+    "/by-device-id/:deviceId",
+    async (req: Request, res: Response) => {
+        const deviceId = getParamValue(req.params.deviceId);
+
+        if (!deviceId || deviceId === "undefined") {
+            res.status(400).json({
+                message: "Invalid deviceID",
+            });
+            return;
+        }
+    },
+);
 
 itemRouter.get("/by-location/", async (req: Request, res: Response) => {
     let items: squareItem[] = [];
@@ -27,19 +42,27 @@ itemRouter.get("/by-location/", async (req: Request, res: Response) => {
 });
 
 itemRouter.get(
-    "/by-location/:locationID",
+    "/by-location/:locationId",
     async (req: Request, res: Response) => {
-        const locationID = req.params.locationID;
+        const locationId = req.params.locationId;
+
+        if (!locationId || locationId === "undefined") {
+            res.status(400).json({
+                message: "Invalid locationID",
+            });
+            return;
+        }
+
         let items: squareItem[] = [];
 
-        if (!locationID) {
+        if (!locationId) {
             logger.warn("No locationID provided, error fetching items");
-        } else if (Array.isArray(locationID)) {
-            for (const id in locationID) {
+        } else if (Array.isArray(locationId)) {
+            for (const id in locationId) {
                 items = items.concat(await getItemsByLocationID(id));
             }
         } else {
-            items = items.concat(await getItemsByLocationID(locationID));
+            items = items.concat(await getItemsByLocationID(locationId));
         }
 
         res.json(items);

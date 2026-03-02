@@ -13,12 +13,15 @@ import { Logger } from "tslog";
 import cors from "cors";
 import { squareRouter } from "@/endpoints/square";
 import { IServerAPIRouter } from "@tessellate-pos/common/src/types/endpoints";
+import { baseRouter } from "@/endpoints/base";
 
 const app = express();
 
 const corsOptions = {
     origin: "*",
 };
+
+app.use(express.json());
 
 app.use(cors(corsOptions));
 
@@ -57,6 +60,7 @@ async function start() {
         await updateCatalogInCache();
 
         const routes: IServerAPIRouter<Router>[] = [
+            { endpoint: "/", router: baseRouter },
             { endpoint: "/config/devices", router: configDeviceRouter },
             { endpoint: "/config/system", router: configSettingRouter },
             { endpoint: "/items", router: itemRouter },
