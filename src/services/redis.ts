@@ -1,7 +1,7 @@
-import { createClient } from 'redis';
-import { Logger } from "@origranot/ts-logger";
+import { createClient } from "redis";
+import { Logger } from "tslog";
 import { configDotenv } from "dotenv";
-import { squareItem } from "@tessellate-pos/common/src/squareTypes";
+import { squareItem } from "@tessellate-pos/common/src/types/squareTypes";
 
 configDotenv();
 
@@ -9,7 +9,8 @@ const logger = new Logger();
 
 // Keys used for item / location storage
 const ITEM_KEY = (itemId: string) => `square:item:${itemId}`;
-const LOCATION_ITEMS_SET = (locationID: string) => `square:items:location:${locationID}`;
+const LOCATION_ITEMS_SET = (locationID: string) =>
+    `square:items:location:${locationID}`;
 const GLOBAL_ITEMS_SET = `square:items:all`;
 
 let redis: ReturnType<typeof createClient> | undefined;
@@ -19,7 +20,9 @@ let redis: ReturnType<typeof createClient> | undefined;
  *
  * @returns {Promise<ReturnType<typeof createClient>>} The Redis Client instance.
  */
-export async function getRedisClient(): Promise<ReturnType<typeof createClient>> {
+export async function getRedisClient(): Promise<
+    ReturnType<typeof createClient>
+> {
     if (redis?.isOpen) return redis;
 
     if (redis && !redis.isOpen) {
@@ -47,10 +50,12 @@ export async function getRedisClient(): Promise<ReturnType<typeof createClient>>
         socket: {
             // @ts-ignore, supposed to be a number, trust
             keepAlive: 5000,
-        }
+        },
     });
 
-    client.on("error", (err: unknown) => logger.error("Redis Client Error:", err));
+    client.on("error", (err: unknown) =>
+        logger.error("Redis Client Error:", err),
+    );
 
     redis = client;
 
@@ -73,12 +78,20 @@ export async function getRedisClient(): Promise<ReturnType<typeof createClient>>
  * @param key
  * @param value
  */
-export const setItemByItemID = async (key: string, value: squareItem): Promise<void> => {
+export const setItemByItemID = async (
+    key: string,
+    value: squareItem,
+): Promise<void> => {
     if (!redis) {
         redis = await getRedisClient();
     }
-    await redis.set(key, JSON.stringify(value, (_, v) => typeof v === 'bigint' ? v.toString() : v));
-}
+    await redis.set(
+        key,
+        JSON.stringify(value, (_, v) =>
+            typeof v === "bigint" ? v.toString() : v,
+        ),
+    );
+};
 
 /**
  * Gets a value from the Redis cache using the provided key.
@@ -86,7 +99,9 @@ export const setItemByItemID = async (key: string, value: squareItem): Promise<v
  *
  * @returns {Promise<squareItem | null>} The retrieved value or null if not found.
  */
-export const getItemByItemID = async (key: string): Promise <squareItem | null> => {
+export const getItemByItemID = async (
+    key: string,
+): Promise<squareItem | null> => {
     if (!redis) {
         redis = await getRedisClient();
     }
@@ -102,7 +117,7 @@ export const getItemByItemID = async (key: string): Promise <squareItem | null> 
         logger.error(`No data found in cache for key: ${key}`, err);
         return null;
     }
-}
+};
 
 /**
  * Stores items and indexes them by parent item id for locations when any variation applies to that location.
@@ -114,11 +129,15 @@ export const getItemByItemID = async (key: string): Promise <squareItem | null> 
  * Note: We do not store per-variation keys anymore. Variations are filtered at read-time.
  * Assumption: the connector (square.ts) is responsible for ensuring variation metadata (e.g. itemId/parentId) is set. We do not generate ids.
  */
-export const setItemsByLocationID = async (items: squareItem[]): Promise<void> => {
+export const setItemsByLocationID = async (
+    items: squareItem[],
+): Promise<void> => {
     if (!redis) redis = await getRedisClient();
 
     if (!items || items.length === 0) {
-        logger.debug('No items provided to setItemsByLocationID; skipping set updates.');
+        logger.debug(
+            "No items provided to setItemsByLocationID; skipping set updates.",
+        );
         return;
     }
 
@@ -127,7 +146,12 @@ export const setItemsByLocationID = async (items: squareItem[]): Promise<void> =
 
     for (const item of items) {
         try {
-            await redis.set(ITEM_KEY(item.id), JSON.stringify(item, (_, v) => typeof v === 'bigint' ? v.toString() : v));
+            await redis.set(
+                ITEM_KEY(item.id),
+                JSON.stringify(item, (_, v) =>
+                    typeof v === "bigint" ? v.toString() : v,
+                ),
+            );
         } catch (err) {
             logger.error(`Failed to set item ${item.id} in redis:`, err);
         }
@@ -159,7 +183,7 @@ export const setItemsByLocationID = async (items: squareItem[]): Promise<void> =
             await redis.sAdd(GLOBAL_ITEMS_SET, globalArray);
         }
     } catch (err) {
-        logger.error('Error updating item sets from catalog:', err);
+        logger.error("Error updating item sets from catalog:", err);
     }
 };
 
@@ -169,18 +193,22 @@ export const setItemsByLocationID = async (items: squareItem[]): Promise<void> =
  *
  * Returns an array of squareItem where the `variations` array contains only the variations present for that location.
  */
-export const getItemsByLocationID = async (locationID?: string): Promise<squareItem[]> => {
+export const getItemsByLocationID = async (
+    locationID?: string,
+): Promise<squareItem[]> => {
     if (!redis) redis = await getRedisClient();
     const client = redis!;
 
-    const setKey = locationID ? LOCATION_ITEMS_SET(locationID) : GLOBAL_ITEMS_SET;
+    const setKey = locationID
+        ? LOCATION_ITEMS_SET(locationID)
+        : GLOBAL_ITEMS_SET;
 
     try {
         const itemIds = await client.sMembers(setKey);
         if (!itemIds || itemIds.length === 0) return [];
 
         // fetch all item JSONs in parallel
-        const itemPromises = itemIds.map(id => client.get(ITEM_KEY(id)));
+        const itemPromises = itemIds.map((id) => client.get(ITEM_KEY(id)));
         const itemJsons = await Promise.all(itemPromises);
 
         const results: squareItem[] = [];
@@ -205,13 +233,19 @@ export const getItemsByLocationID = async (locationID?: string): Promise<squareI
                 // variations that are not applicable to the client's context (e.g. by location).
                 results.push(parsed);
             } catch (err) {
-                logger.error(`Failed to parse stored item JSON for id ${itemIds[i]}:`, err);
+                logger.error(
+                    `Failed to parse stored item JSON for id ${itemIds[i]}:`,
+                    err,
+                );
             }
         }
 
         return results;
     } catch (err) {
-        logger.error(`Error retrieving items for location ${locationID ?? 'GLOBAL'}:`, err);
+        logger.error(
+            `Error retrieving items for location ${locationID ?? "GLOBAL"}:`,
+            err,
+        );
         return [];
     }
 };

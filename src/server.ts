@@ -1,10 +1,26 @@
-import express from 'express';
-import {getRedisClient, setItemByItemID, setItemsByLocationID} from './services/redis';
-import {fetchItems} from "./services/square";
-import {itemRouter} from "./endpoints/items";
-import {Logger} from "@origranot/ts-logger";
+import express, { Router } from "express";
+import { getRedisClient, setItemsByLocationID } from "./services/redis";
+import { fetchItems } from "./services/square";
+import { itemRouter } from "@/endpoints/v1/items";
+import { configDeviceRouter } from "@/endpoints/v1/config/devices";
+import { configSettingRouter } from "@/endpoints/v1/config/settings";
+import { Logger } from "tslog";
+import cors from "cors";
+import { squareRouter } from "@/endpoints/v1/square";
+import { IServerAPIRouter } from "@tessellate-pos/common/src/types/endpoints";
+import { baseRouter } from "@/endpoints/base";
+import * as http from "node:http";
+import { setupWebSocket } from "@/services/websocket/websocket";
+// import { orderRouter } from "@/endpoints/v1/orders";
 
 const app = express();
+const corsOptions = {
+    origin: "*",
+};
+
+app.use(express.json());
+
+app.use(cors(corsOptions));
 
 const logger = new Logger();
 
@@ -15,13 +31,13 @@ export async function updateCatalogInCache() {
     const redis = await getRedisClient();
 
     if (!redis) {
-        throw new Error('Redis client not available');
+        throw new Error("Redis client not available");
     }
 
-    const catalog = await fetchItems()
-    logger.debug('updateCatalogInCache');
+    const catalog = await fetchItems();
+    logger.debug("updateCatalogInCache");
 
-    await setItemsByLocationID(catalog.items)
+    await setItemsByLocationID(catalog.items);
 
     // for (const item of catalog.items) {
     //     await setItemByItemID(item.id, item);
@@ -34,22 +50,33 @@ async function start() {
         const redis = await getRedisClient(); // await the async function
 
         if (!redis) {
-            throw new Error('Redis client not available');
+            throw new Error("Redis client not available");
         }
 
-       // Initial catalog update
+        // Initial catalog update
         await updateCatalogInCache();
 
+        const routes: IServerAPIRouter<Router>[] = [
+            { endpoint: "/", router: baseRouter },
+            { endpoint: "/config/devices", router: configDeviceRouter },
+            { endpoint: "/config/system", router: configSettingRouter },
+            { endpoint: "/items", router: itemRouter },
+            { endpoint: "/square", router: squareRouter },
+        ];
 
-        app.use('/items', itemRouter);
-        // start server after redis is ready
-        const port = Number(process.env.PORT) || 3000;
-        app.listen(port, () => {
-            logger.info(`Server listening on ${port}`);
+        routes.forEach((route) => {
+            app.use(route.endpoint, route.router);
         });
 
+        const httpServer = http.createServer(app);
+        setupWebSocket(httpServer);
+        // start server after redis is ready
+        const port = Number(process.env.PORT) || 3000;
+        httpServer.listen(port, () => {
+            logger.info(`Server listening on ${port}`);
+        });
     } catch (err) {
-        logger.error('Startup error:', err);
+        logger.error("Startup error:", err);
         process.exit(1);
     }
 }
