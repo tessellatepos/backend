@@ -30,11 +30,14 @@
         "redis": "^5.10.0",
         "square": "^44.0.0",
         "ts-node": "^10.9.2",
-        "tslog": "^4.10.2"
+        "tslog": "^4.10.2",
+        "ws": "^8.19.0"
     },
     "devDependencies": {
         "@tsconfig/node-ts": "^23.6.2",
+        "@types/cors": "^2.8.19",
         "@types/node": "^25.0.9",
+        "@types/ws": "^8.18.1",
         "drizzle-kit": "^0.31.9",
         "eslint": "^9.39.1",
         "eslint-config-prettier": "^10.1.8",
