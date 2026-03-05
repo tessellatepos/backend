@@ -7,6 +7,7 @@ import type {
     squareItemVariationLocationOverrides,
     squareHelperCategory,
     squareHelperItemVariation,
+    squareOrder,
 } from "@tessellate-pos/common/src/types/squareTypes";
 import { configDotenv } from "dotenv";
 configDotenv();
@@ -102,9 +103,6 @@ export async function fetchItems(): Promise<squareItemCatalog> {
             }
 
             //get categories
-            const rawReportingCategories = item.itemData.reportingCategory as
-                | squareHelperCategory[]
-                | undefined;
             const reportingCategory: squareItemCategory[] = [];
             for (const cat of rawCategories || []) {
                 if (!cat.id) continue;
@@ -180,4 +178,32 @@ async function fetchSquareCategory(id: string): Promise<squareItemCategory> {
         return category;
     }
     return {};
+}
+
+export async function createSquareOrder(
+    order: squareOrder,
+): Promise<squareOrder | undefined | null> {
+    if (!order.lineItems) {
+        return null;
+    }
+
+    const idempotencyKey = crypto.randomUUID();
+    const response = await client.orders.create({
+        idempotencyKey: idempotencyKey,
+        order: {
+            locationId: order.locationId,
+            lineItems: order.lineItems.map((li) => {
+                const lineItem: OrderLineItem = {
+                    quantity: li.quantity!.toString(),
+                    catalogObjectId: li.itemId,
+                };
+                return lineItem;
+            }),
+            referenceId: order.referenceId,
+        },
+    });
+
+    if (response) {
+        return response as squareOrder;
+    }
 }

@@ -11,7 +11,7 @@ import { IServerAPIRouter } from "@tessellate-pos/common/src/types/endpoints";
 import { baseRouter } from "@/endpoints/base";
 import * as http from "node:http";
 import { setupWebSocket } from "@/services/websocket/websocket";
-// import { orderRouter } from "@/endpoints/v1/orders";
+import { orderRouter } from "@/endpoints/v1/orders";
 
 const app = express();
 const corsOptions = {
@@ -38,11 +38,6 @@ export async function updateCatalogInCache() {
     logger.debug("updateCatalogInCache");
 
     await setItemsByLocationID(catalog.items);
-
-    // for (const item of catalog.items) {
-    //     await setItemByItemID(item.id, item);
-    //
-    // }
 }
 
 async function start() {
@@ -58,10 +53,11 @@ async function start() {
 
         const routes: IServerAPIRouter<Router>[] = [
             { endpoint: "/", router: baseRouter },
-            { endpoint: "/config/devices", router: configDeviceRouter },
-            { endpoint: "/config/system", router: configSettingRouter },
-            { endpoint: "/items", router: itemRouter },
-            { endpoint: "/square", router: squareRouter },
+            { endpoint: "/api/v1/config/devices", router: configDeviceRouter },
+            { endpoint: "/api/v1/config/system", router: configSettingRouter },
+            { endpoint: "/api/v1/items", router: itemRouter },
+            { endpoint: "/api/v1/square", router: squareRouter },
+            { endpoint: "/api/v1/orders", router: orderRouter },
         ];
 
         routes.forEach((route) => {
