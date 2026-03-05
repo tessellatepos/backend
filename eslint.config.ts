@@ -8,7 +8,6 @@ export default defineConfig([
     {
         files: ["**/*.{ts,mts,cts,tsx}"],
         plugins: {
-            js,
             "@typescript-eslint": tseslint.plugin,
         },
         extends: [js.configs.recommended, ...tseslint.configs.recommended],
@@ -19,5 +18,5 @@ export default defineConfig([
             globals: globals.browser,
         },
     },
-    (module.exports = [eslintPluginPrettierRecommended]),
+    [eslintPluginPrettierRecommended],
 ]);

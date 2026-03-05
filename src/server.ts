@@ -1,22 +1,17 @@
 import express, { Router } from "express";
-import {
-    getRedisClient,
-    setItemByItemID,
-    setItemsByLocationID,
-} from "./services/redis";
+import { getRedisClient, setItemsByLocationID } from "./services/redis";
 import { fetchItems } from "./services/square";
-import { itemRouter } from "./endpoints/items";
-import { configDeviceRouter } from "@/endpoints/config/devices";
-import { configSettingRouter } from "@/endpoints/config/settings";
+import { itemRouter } from "@/endpoints/v1/items";
+import { configDeviceRouter } from "@/endpoints/v1/config/devices";
+import { configSettingRouter } from "@/endpoints/v1/config/settings";
 import { Logger } from "tslog";
-//@ts-expect-error I'm not planning on fixing these imports, doesn't cause any issues when linting
 import cors from "cors";
-import { squareRouter } from "@/endpoints/square";
+import { squareRouter } from "@/endpoints/v1/square";
 import { IServerAPIRouter } from "@tessellate-pos/common/src/types/endpoints";
 import { baseRouter } from "@/endpoints/base";
 import * as http from "node:http";
 import { setupWebSocket } from "@/services/websocket/websocket";
-import { orderRouter } from "@/endpoints/v1/orders";
+// import { orderRouter } from "@/endpoints/v1/orders";
 
 const app = express();
 const corsOptions = {
@@ -77,7 +72,7 @@ async function start() {
         setupWebSocket(httpServer);
         // start server after redis is ready
         const port = Number(process.env.PORT) || 3000;
-        app.listen(port, () => {
+        httpServer.listen(port, () => {
             logger.info(`Server listening on ${port}`);
         });
     } catch (err) {

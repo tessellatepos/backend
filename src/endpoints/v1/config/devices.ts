@@ -23,7 +23,7 @@ configDeviceRouter.get("/", async (req, res) => {
     res.json(configSystems);
 });
 
-configDeviceRouter.get("/pair-device/", async (res: Response) => {
+configDeviceRouter.get("/pair-device/", async (req: Request, res: Response) => {
     logger.info(`Received GET request for a new pairing device`);
     const config = await createConfigDevice();
     res.json(config);
@@ -78,9 +78,7 @@ configDeviceRouter.delete(
         logger.info(
             `Received DELETE request for pairing device with paring code: ${deviceId}`,
         );
-
-        const deleteDevice = await deleteConfigDevice(deviceId);
-
+        await deleteConfigDevice(deviceId);
         const checkDeleteDevice = await getConfigDeviceByPairingCode(deviceId);
 
         if (!checkDeleteDevice) {
