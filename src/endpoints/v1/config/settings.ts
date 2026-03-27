@@ -5,7 +5,7 @@ import {
     getConfigSystem,
     updateConfigSystem,
 } from "@/services/db/configSystem";
-import { IConfigSystem } from "@tessellate-pos/common/src/types/database";
+import { IConfigSystem } from "@tessellatepos/common/src/types/database";
 
 export const configSettingRouter: Router = express.Router();
 

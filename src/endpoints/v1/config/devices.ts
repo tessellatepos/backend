@@ -10,7 +10,7 @@ import {
     getConfigDeviceByID,
     getAllConfigDevices,
 } from "@/services/db/configDevice";
-import { IConfigDevice } from "@tessellate-pos/common/src/types/database";
+import { IConfigDevice } from "@tessellatepos/common/src/types/database";
 import { getParamValue } from "@/utils/expressHelpers";
 
 export const configDeviceRouter: Router = express.Router();

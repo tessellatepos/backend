@@ -1,7 +1,7 @@
 import express from "express";
 import { Request, Response, Router } from "express";
 import { getItemsByLocationID } from "@/services/redis";
-import { squareItem } from "@tessellate-pos/common/src/types/squareTypes";
+import { squareItem } from "@tessellatepos/common/src/types/squareTypes";
 import { Logger } from "tslog";
 import { updateCatalogInCache } from "@/server";
 import { getParamValue } from "@/utils/expressHelpers";

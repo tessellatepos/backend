@@ -1,7 +1,7 @@
 import { createClient } from "redis";
 import { Logger } from "tslog";
 import { configDotenv } from "dotenv";
-import { squareItem } from "@tessellate-pos/common/src/types/squareTypes";
+import { squareItem } from "@tessellatepos/common/src/types/squareTypes";
 
 configDotenv();
 
@@ -33,7 +33,9 @@ export async function getRedisClient(): Promise<
             logger.error("Error reconnecting to Redis:", err);
             try {
                 await redis.quit();
-            } catch (_) {}
+            } catch (e) {
+                logger.error("Redis Error:", e);
+            }
             redis = undefined;
         }
     }
@@ -48,7 +50,7 @@ export async function getRedisClient(): Promise<
         url: process.env.REDIS_URL,
         // password: process.env.REDIS_PASSWORD,
         socket: {
-            // @ts-ignore, supposed to be a number, trust
+            // @ts-expect-error, supposed to be a number, trust
             keepAlive: 5000,
         },
     });
@@ -67,7 +69,9 @@ export async function getRedisClient(): Promise<
         logger.error("Redis connection error:", err);
         try {
             await client.quit();
-        } catch (_) {}
+        } catch (e) {
+            logger.error("Error reconnecting to Redis:", e);
+        }
         redis = undefined;
         throw err;
     }
@@ -225,6 +229,7 @@ export const getItemsByLocationID = async (
 
                 if (Array.isArray(parsed.variations)) {
                     for (const v of parsed.variations) {
+                        // eslint-disable-next-line
                         v.parent = parentSummary as any;
                     }
                 }

@@ -8,7 +8,7 @@ import type {
     squareHelperCategory,
     squareHelperItemVariation,
     squareOrder,
-} from "@tessellate-pos/common/src/types/squareTypes";
+} from "@tessellatepos/common/src/types/squareTypes";
 import { configDotenv } from "dotenv";
 configDotenv();
 
