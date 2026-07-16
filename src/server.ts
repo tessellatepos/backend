@@ -7,7 +7,7 @@ import { configSettingRouter } from "@/endpoints/v1/config/settings";
 import { Logger } from "tslog";
 import cors from "cors";
 import { squareRouter } from "@/endpoints/v1/square";
-import { IServerAPIRouter } from "@tessellatepos/common/src/types/endpoints";
+import { type IServerAPIRouter } from "@tessellatepos/common";
 import { baseRouter } from "@/endpoints/base";
 import * as http from "node:http";
 import { setupWebSocket } from "@/services/websocket/websocket";

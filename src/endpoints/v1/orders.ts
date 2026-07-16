@@ -1,7 +1,8 @@
 import express, { Router } from "express";
 import { Logger } from "tslog";
-import { createSquareOrder } from "@/services/square";
-import { squareOrder } from "@tessellatepos/common/src/types/squareTypes";
+import { createDebugSquareOrder } from "@/services/square";
+import { bigintReplacer } from "@tessellatepos/sdk";
+import type { Order } from "@tessellatepos/sdk";
 
 export const orderRouter: Router = express.Router();
 
@@ -9,7 +10,7 @@ const logger = new Logger();
 
 orderRouter.post("/create", async (req, res) => {
     try {
-        const orderDetails: squareOrder = req.body;
+        const orderDetails: Order = req.body;
 
         logger.debug("orderDetails created", orderDetails);
 
@@ -18,22 +19,32 @@ orderRouter.post("/create", async (req, res) => {
             return;
         }
 
-        const order = await createSquareOrder(orderDetails);
+        const order = await createDebugSquareOrder(orderDetails);
 
         if (order !== null && order !== undefined) {
             logger.debug("Created order:", order.referenceId);
-            res.status(200).json(order);
+            res.status(200)
+                .header("Content-Type", "application/json")
+                .send(JSON.stringify(order, bigintReplacer));
         } else {
             logger.debug(
                 "Failed to create order",
-                JSON.stringify(order, (_, v) =>
-                    typeof v === "bigint" ? v.toString() : v,
-                ),
+                JSON.stringify(order, bigintReplacer),
             );
             res.status(500).json({ message: "Failed to create order" });
         }
     } catch (error) {
         logger.error(error);
         res.status(500).json({ message: "Failed to create order", error });
+    }
+});
+
+orderRouter.post(":orderId/checkout", async (req, res) => {
+    try {
+        // const orderId = req.params.orderId;
+        // const checkoutDetails: CheckoutDetails
+    } catch (error) {
+        logger.error(error);
+        res.status(500).json({ message: "Failed to checkout order", error });
     }
 });

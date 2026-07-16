@@ -4,7 +4,7 @@
     "private": true,
     "main": "src/server.ts",
     "scripts": {
-        "dev": "ts-node -r tsconfig-paths/register --transpile-only src/server.ts",
+        "dev": "tsx src/server.ts",
         "build": "tsc",
         "start": "node dist/server.js",
         "lint": "prettier . && eslint .",
@@ -19,7 +19,8 @@
     },
     "dependencies": {
         "@origranot/ts-logger": "^1.12.0",
-        "@tessellatepos/common": "file:../common/tessellatepos-common-0.3.2-dev.tgz",
+        "@tessellatepos/common": "workspace:*",
+        "@tessellatepos/sdk": "workspace:*",
         "@types/express": "^5.0.6",
         "cors": "^2.8.6",
         "dotenv": "^17.3.1",

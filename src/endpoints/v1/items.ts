@@ -1,7 +1,7 @@
 import express from "express";
 import { Request, Response, Router } from "express";
 import { getItemsByLocationID } from "@/services/redis";
-import { squareItem } from "@tessellatepos/common/src/types/squareTypes";
+import { type Item } from "@tessellatepos/sdk";
 import { Logger } from "tslog";
 import { updateCatalogInCache } from "@/server";
 import { getParamValue } from "@/utils/expressHelpers";
@@ -27,7 +27,7 @@ itemRouter.get(
 );
 
 itemRouter.get("/by-location/", async (req: Request, res: Response) => {
-    let items: squareItem[] = [];
+    let items: Item[] = [];
 
     logger.debug("No locationID provided, fetching items for all locations.");
     const fetched = await getItemsByLocationID();
@@ -53,7 +53,7 @@ itemRouter.get(
             return;
         }
 
-        let items: squareItem[] = [];
+        let items: Item[] = [];
 
         if (!locationId) {
             logger.warn("No locationID provided, error fetching items");

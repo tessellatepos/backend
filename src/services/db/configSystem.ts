@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { eq } from "drizzle-orm";
 import { configSystemTable } from "@/services/db/schema";
-import { IConfigSystem } from "@tessellatepos/common/src/types/database";
+import { type IConfigSystem } from "@tessellatepos/common";
 import { drizzleDB } from "@/services/db/postgres";
 
 type TDrizzleDB = typeof drizzleDB;
