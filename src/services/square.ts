@@ -209,6 +209,7 @@ export async function createSquareOrder(
                 return lineItem;
             }),
             referenceId: order.referenceId,
+            source: order.source,
         },
     });
 
@@ -320,33 +321,4 @@ export async function paySquareOrderWithCash(
     });
 
     return response.payment?.cashDetails?.changeBackMoney as Money;
-}
-
-export async function createDebugSquareOrder(
-    order: Order,
-): Promise<Order | undefined | null> {
-    if (!order.lineItems) {
-        return null;
-    }
-
-    // const idempotencyKey = crypto.randomUUID();
-    const response = await client.orders.create({
-        idempotencyKey: order.referenceId!,
-        order: {
-            locationId: order.locationId,
-            referenceId: order.referenceId,
-            lineItems: order.lineItems.map((li) => {
-                const lineItem: OrderLineItem = {
-                    quantity: li.quantity!.toString(),
-                    catalogObjectId: li.itemId,
-                };
-                return lineItem;
-            }),
-            source: order.source,
-        },
-    });
-
-    if (response) {
-        return response.order as Order;
-    }
 }

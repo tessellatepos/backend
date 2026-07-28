@@ -1,7 +1,7 @@
 import express, { Router } from "express";
 import { Logger } from "tslog";
 import {
-    createDebugSquareOrder,
+    createSquareOrder,
     createTerminalCheckout,
     fetchSquareOrder,
     getTerminalCheckoutStatus,
@@ -26,7 +26,9 @@ orderRouter.post("/create", async (req, res) => {
             return;
         }
 
-        const order = await createDebugSquareOrder(orderDetails);
+        orderDetails.referenceId = crypto.randomUUID();
+
+        const order = await createSquareOrder(orderDetails);
 
         if (order !== null && order !== undefined) {
             logger.debug("Created order:", order.referenceId);
