@@ -56,6 +56,7 @@ configDeviceRouter.get(
                 square_location: config.square_location,
                 customer_facing: config.customer_facing,
                 device_hardware_id: config.device_hardware_id,
+                device_type: config.device_type,
             };
             await updateConfigDevice(config.id, newConfig);
             res.json(newConfig);
@@ -129,6 +130,7 @@ configDeviceRouter.put(
                 square_location: dbConfig.square_location,
                 customer_facing: dbConfig.customer_facing,
                 device_hardware_id: updatedConfig.device_hardware_id,
+                device_type: updatedConfig.device_type ?? dbConfig.device_type,
             };
             await updateConfigDevice(dbConfig.id, newConfig);
             res.json(newConfig);
