@@ -7,6 +7,7 @@ import {
     getTerminalCheckoutStatus,
 } from "@/services/square";
 import { getPairedDeviceByType } from "@/services/db/configDevice";
+import { insertOrder } from "@/services/db/orders";
 import { bigintReplacer } from "@tessellatepos/sdk";
 import type { Order } from "@tessellatepos/sdk";
 
@@ -29,6 +30,7 @@ orderRouter.post("/create", async (req, res) => {
 
         if (order !== null && order !== undefined) {
             logger.debug("Created order:", order.referenceId);
+            await insertOrder(order);
             res.status(200)
                 .header("Content-Type", "application/json")
                 .send(JSON.stringify(order, bigintReplacer));
