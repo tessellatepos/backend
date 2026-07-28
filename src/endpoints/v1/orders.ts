@@ -1,6 +1,12 @@
 import express, { Router } from "express";
 import { Logger } from "tslog";
-import { createDebugSquareOrder } from "@/services/square";
+import {
+    createDebugSquareOrder,
+    createTerminalCheckout,
+    fetchSquareOrder,
+    getTerminalCheckoutStatus,
+} from "@/services/square";
+import { getPairedDeviceByType } from "@/services/db/configDevice";
 import { bigintReplacer } from "@tessellatepos/sdk";
 import type { Order } from "@tessellatepos/sdk";
 
@@ -39,10 +45,44 @@ orderRouter.post("/create", async (req, res) => {
     }
 });
 
-orderRouter.post(":orderId/checkout", async (req, res) => {
+orderRouter.post("/:orderId/checkout", async (req, res) => {
     try {
-        // const orderId = req.params.orderId;
-        // const checkoutDetails: CheckoutDetails
+        const orderId = req.params.orderId;
+
+        const terminalDevice = await getPairedDeviceByType("TERMINAL");
+        const deviceId = terminalDevice?.device_hardware_id;
+        if (!deviceId) {
+            logger.error("No paired Terminal device is configured");
+            res.status(500).json({
+                message: "Terminal device is not configured",
+            });
+            return;
+        }
+
+        const order = await fetchSquareOrder(orderId);
+        if (!order || !order.totalMoney) {
+            res.status(404).json({
+                message: "Order not found or missing total",
+            });
+            return;
+        }
+
+        const checkoutId = await createTerminalCheckout(
+            orderId,
+            order.totalMoney,
+            deviceId,
+        );
+
+        if (!checkoutId) {
+            res.status(500).json({
+                message: "Failed to create terminal checkout",
+            });
+            return;
+        }
+
+        const status = await getTerminalCheckoutStatus(checkoutId);
+
+        res.status(200).json({ checkoutId, status });
     } catch (error) {
         logger.error(error);
         res.status(500).json({ message: "Failed to checkout order", error });

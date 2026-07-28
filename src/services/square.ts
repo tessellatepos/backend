@@ -218,6 +218,25 @@ export async function createSquareOrder(
 }
 
 /**
+ * Fetches an order from Square by ID
+ * @param orderId the id of the order to fetch
+ * @returns the order, or null if it doesn't exist
+ */
+export async function fetchSquareOrder(
+    orderId: string,
+): Promise<Order | undefined | null> {
+    if (!orderId) {
+        return null;
+    }
+
+    const response = await client.orders.get({ orderId });
+
+    if (response) {
+        return response.order as Order;
+    }
+}
+
+/**
  * Creates a terminal checkour
  * @param orderId the order id for the checkout process
  * @param amount the amount to check out with a square terminal
