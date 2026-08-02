@@ -12,6 +12,9 @@ type TDrizzleDB = typeof drizzleDB;
  * strings so the value can be stored in a jsonb column.
  */
 function serializeForJsonb<T>(value: T): T {
+    if (value === undefined) {
+        return null as T;
+    }
     return JSON.parse(JSON.stringify(value, bigintReplacer));
 }
 
@@ -24,7 +27,7 @@ function toDbOrder(order: Order): typeof squareOrdersTable.$inferInsert {
         customerId: order.customerId ?? null,
         lineItems: serializeForJsonb(order.lineItems ?? null),
         taxes: serializeForJsonb(order.taxes ?? null),
-        discounts: serializeForJsonb(order.discounts),
+        discounts: serializeForJsonb(order.discounts ?? []),
         netAmount: serializeForJsonb(order.netAmount ?? null),
         roundingAdjustment: serializeForJsonb(order.roundingAdjustment ?? null),
         tenders: serializeForJsonb(order.tenders ?? null),
