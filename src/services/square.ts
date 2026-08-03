@@ -293,6 +293,45 @@ export async function getTerminalCheckoutStatus(checkoutId: string) {
     }
 }
 
+/**
+ * Verifies a payment taken by the Square Mobile Payments SDK (phone-attached
+ * Reader) actually belongs to the given order before we trust it. We never
+ * see a card nonce for this path — the mobile app hands us a paymentId and
+ * we confirm it here.
+ * @param orderId the order the payment should be for
+ * @param paymentId the Square payment id returned by the Mobile Payments SDK
+ * @returns true if the payment is COMPLETED, for this order, and its amount matches the order total
+ */
+export async function confirmMobileReaderPayment(
+    orderId: string,
+    paymentId: string,
+): Promise<boolean> {
+    if (!orderId || !paymentId) {
+        return false;
+    }
+
+    const response = await client.payments.get({ paymentId });
+    const payment = response.payment;
+    if (!payment) {
+        return false;
+    }
+
+    if (payment.orderId !== orderId) {
+        return false;
+    }
+
+    if (payment.status !== "COMPLETED") {
+        return false;
+    }
+
+    const order = await fetchSquareOrder(orderId);
+    if (!order?.totalMoney?.amount || !payment.amountMoney?.amount) {
+        return false;
+    }
+
+    return payment.amountMoney.amount === order.totalMoney.amount;
+}
+
 export async function paySquareOrderWithCash(
     orderId: string,
     amountTendered: Money,
@@ -306,9 +345,13 @@ export async function paySquareOrderWithCash(
     const response = await client.payments.create({
         idempotencyKey: idempotencyKey,
         sourceId: "CASH",
+        // Square requires amountMoney to equal the order total when a
+        // payment is attached to an orderId. What the customer actually
+        // handed over goes in cashDetails.buyerSuppliedMoney — Square
+        // computes changeBackMoney as the difference itself.
         amountMoney: {
-            amount: amountTendered.amount,
-            currency: amountTendered.currency as Currency,
+            amount: orderAmount.amount,
+            currency: orderAmount.currency as Currency,
         },
         autocomplete: true,
         cashDetails: {

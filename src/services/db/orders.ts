@@ -59,6 +59,29 @@ export async function insertOrder(order: Order, db: TDrizzleDB = drizzleDB) {
 }
 
 /**
+ * Overwrites the locally persisted order with the latest state fetched from
+ * Square — used after a payment (cash, terminal, or mobile reader) completes
+ * so tenders/state stay in sync.
+ * @param order the up-to-date Square order
+ * @returns the updated row, or null if the order has no referenceId
+ */
+export async function syncOrderFromSquare(
+    order: Order,
+    db: TDrizzleDB = drizzleDB,
+) {
+    if (!order.referenceId) {
+        return null;
+    }
+
+    const dbOrder = toDbOrder(order);
+    await db
+        .update(squareOrdersTable)
+        .set({ ...dbOrder, updatedAt: new Date() })
+        .where(eq(squareOrdersTable.referenceId, order.referenceId));
+    return dbOrder;
+}
+
+/**
  * Fetches a locally persisted order by its referenceId.
  * @param referenceId the reference id of the order
  * @returns the order, or null if it doesn't exist
