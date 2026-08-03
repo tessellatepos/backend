@@ -1,8 +1,9 @@
 import "dotenv/config";
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 import { configDevicesTable } from "./schema";
 import { drizzleDB } from "@/services/db/postgres";
+import type { DeviceType } from "@tessellatepos/common";
 
 type TDrizzleDB = typeof drizzleDB;
 
@@ -16,6 +17,7 @@ export async function createConfigDevice(db: TDrizzleDB = drizzleDB) {
         square_location: null,
         customer_facing: false,
         device_hardware_id: null,
+        device_type: null,
     };
 
     console.log(deviceConfig);
@@ -48,6 +50,24 @@ export async function getConfigDeviceByID(
         .select()
         .from(configDevicesTable)
         .where(eq(configDevicesTable.id, id))
+        .limit(1);
+    return deviceConfig[0] || null;
+}
+
+export async function getPairedDeviceByType(
+    deviceType: DeviceType,
+    db: TDrizzleDB = drizzleDB,
+) {
+    const deviceConfig = await db
+        .select()
+        .from(configDevicesTable)
+        .where(
+            and(
+                eq(configDevicesTable.device_type, deviceType),
+                isNotNull(configDevicesTable.paired_at),
+                isNotNull(configDevicesTable.device_hardware_id),
+            ),
+        )
         .limit(1);
     return deviceConfig[0] || null;
 }

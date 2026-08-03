@@ -1,5 +1,6 @@
 import {
     pgTable,
+    pgEnum,
     timestamp,
     text,
     integer,
@@ -7,6 +8,11 @@ import {
     varchar,
     jsonb,
 } from "drizzle-orm/pg-core";
+
+export const deviceTypeEnum = pgEnum("device_type", [
+    "TERMINAL",
+    "MOBILE_READER",
+]);
 
 export const configDevicesTable = pgTable("config-devices", {
     id: varchar("id", { length: 12 }).primaryKey(),
@@ -21,6 +27,7 @@ export const configDevicesTable = pgTable("config-devices", {
     square_location: varchar("square_location", { length: 14 }),
     customer_facing: boolean(),
     device_hardware_id: text("device_hardware_id"),
+    device_type: deviceTypeEnum("device_type"),
 });
 
 export const configSystemTable = pgTable("config-system", {

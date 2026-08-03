@@ -1,26 +1,25 @@
 import express, { Router } from "express";
-import { getRedisClient, setItemsByLocationID } from "./services/redis";
-import { fetchItems } from "./services/square";
+import { getRedisClient, setItemsByLocationID } from "@/services/redis";
+import { fetchItems } from "@/services/square";
 import { itemRouter } from "@/endpoints/v1/items";
 import { configDeviceRouter } from "@/endpoints/v1/config/devices";
 import { configSettingRouter } from "@/endpoints/v1/config/settings";
 import { Logger } from "tslog";
 import cors from "cors";
 import { squareRouter } from "@/endpoints/v1/square";
-import { IServerAPIRouter } from "@tessellate-pos/common/src/types/endpoints";
+import { type IServerAPIRouter } from "@tessellatepos/common";
 import { baseRouter } from "@/endpoints/base";
 import * as http from "node:http";
 import { setupWebSocket } from "@/services/websocket/websocket";
-// import { orderRouter } from "@/endpoints/v1/orders";
+import { orderRouter } from "@/endpoints/v1/orders";
 
 const app = express();
 const corsOptions = {
     origin: "*",
 };
 
-app.use(express.json());
-
 app.use(cors(corsOptions));
+app.use(express.json());
 
 const logger = new Logger();
 
@@ -38,11 +37,6 @@ export async function updateCatalogInCache() {
     logger.debug("updateCatalogInCache");
 
     await setItemsByLocationID(catalog.items);
-
-    // for (const item of catalog.items) {
-    //     await setItemByItemID(item.id, item);
-    //
-    // }
 }
 
 async function start() {
@@ -54,14 +48,15 @@ async function start() {
         }
 
         // Initial catalog update
-        await updateCatalogInCache();
+        // await updateCatalogInCache();
 
         const routes: IServerAPIRouter<Router>[] = [
             { endpoint: "/", router: baseRouter },
-            { endpoint: "/config/devices", router: configDeviceRouter },
-            { endpoint: "/config/system", router: configSettingRouter },
-            { endpoint: "/items", router: itemRouter },
-            { endpoint: "/square", router: squareRouter },
+            { endpoint: "/api/v1/config/devices", router: configDeviceRouter },
+            { endpoint: "/api/v1/config/system", router: configSettingRouter },
+            { endpoint: "/api/v1/items", router: itemRouter },
+            { endpoint: "/api/v1/square", router: squareRouter },
+            { endpoint: "/api/v1/orders", router: orderRouter },
         ];
 
         routes.forEach((route) => {

@@ -1,13 +1,20 @@
-import { OrderLineItem, SquareClient, SquareEnvironment } from "square";
+import {
+    Currency,
+    OrderLineItem,
+    SquareClient,
+    SquareEnvironment,
+} from "square";
 import type {
-    squareItem,
-    squareItemCatalog,
-    squareItemVariation,
-    squareItemCategory,
-    squareItemVariationLocationOverrides,
+    Item,
+    ItemCatalog,
+    ItemVariation,
+    ItemCategory,
+    ItemVariationLocationOverrides,
     squareHelperCategory,
     squareHelperItemVariation,
-} from "@tessellate-pos/common/src/types/squareTypes";
+    Order,
+    Money,
+} from "@tessellatepos/sdk";
 import { configDotenv } from "dotenv";
 configDotenv();
 
@@ -22,12 +29,12 @@ const client = new SquareClient({
 /**
  * Fetches the item catalog from Square.
  *
- * @returns {Promise<squareItemCatalog>} The item catalog.
+ * @returns {Promise<ItemCatalog>} The item catalog.
  */
-export async function fetchItems(): Promise<squareItemCatalog> {
+export async function fetchItems(): Promise<ItemCatalog> {
     const response = await client.catalog.list();
     // const itemsMap = new Map<string, ISquareItem>();
-    const itemCatalog: squareItemCatalog = {
+    const itemCatalog: ItemCatalog = {
         items: [],
     };
 
@@ -55,9 +62,8 @@ export async function fetchItems(): Promise<squareItemCatalog> {
             }
 
             const rawVariations = item.itemData.variations as
-                | squareHelperItemVariation[]
-                | undefined;
-            const variations: squareItemVariation[] = [];
+                squareHelperItemVariation[] | undefined;
+            const variations: ItemVariation[] = [];
             // prepare a minimal parent summary (id + name) to attach to each variation
             const parentSummary = {
                 id: item.id,
@@ -66,7 +72,7 @@ export async function fetchItems(): Promise<squareItemCatalog> {
 
             for (const varItem of rawVariations || []) {
                 if (!varItem.itemVariationData) continue;
-                const variation: squareItemVariation = {
+                const variation: ItemVariation = {
                     itemId: varItem.id,
                     name: varItem.itemVariationData.name,
                     sku: varItem.itemVariationData.sku,
@@ -82,7 +88,7 @@ export async function fetchItems(): Promise<squareItemCatalog> {
                                     priceMoney: lo.priceMoney,
                                     pricingType: lo.pricingType,
                                     trackInventory: lo.trackInventory,
-                                }) as squareItemVariationLocationOverrides,
+                                }) as ItemVariationLocationOverrides,
                         ),
                     trackInventory: varItem.itemVariationData.trackInventory,
                     parent: parentSummary,
@@ -92,9 +98,8 @@ export async function fetchItems(): Promise<squareItemCatalog> {
 
             //get categories
             const rawCategories = item.itemData.categories as
-                | squareHelperCategory[]
-                | undefined;
-            const categories: squareItemCategory[] = [];
+                squareHelperCategory[] | undefined;
+            const categories: ItemCategory[] = [];
             for (const cat of rawCategories || []) {
                 if (!cat.id) continue;
                 const category = await fetchSquareCategory(cat.id);
@@ -102,10 +107,7 @@ export async function fetchItems(): Promise<squareItemCatalog> {
             }
 
             //get categories
-            const rawReportingCategories = item.itemData.reportingCategory as
-                | squareHelperCategory[]
-                | undefined;
-            const reportingCategory: squareItemCategory[] = [];
+            const reportingCategory: ItemCategory[] = [];
             for (const cat of rawCategories || []) {
                 if (!cat.id) continue;
                 const category = await fetchSquareCategory(cat.id);
@@ -113,7 +115,7 @@ export async function fetchItems(): Promise<squareItemCatalog> {
             }
 
             //Construct the catalog item
-            const catalogItem: squareItem = {
+            const catalogItem: Item = {
                 id: item.id,
                 name: item.itemData.name,
                 buyerFacingName: item.itemData.buyerFacingName,
@@ -151,20 +153,20 @@ async function fetchSquareImage(id: string): Promise<string> {
 /**
  * Fetches the category for a given Square image ID.
  * @param id The id of the category object
- * @returns {Promise<squareItemCategory>} The Square Item Category.
+ * @returns {Promise<ItemCategory>} The Square Item Category.
  */
-async function fetchSquareCategory(id: string): Promise<squareItemCategory> {
+async function fetchSquareCategory(id: string): Promise<ItemCategory> {
     const response = await client.catalog.object.get({ objectId: id });
     if (response.object?.type === "CATEGORY") {
         const resp = response.object;
 
-        let parentCategory: squareItemCategory = {};
+        let parentCategory: ItemCategory = {};
         const parentId = resp.categoryData?.parentCategory?.id;
         if (parentId) {
             parentCategory = await fetchSquareCategory(parentId);
         }
 
-        const category: squareItemCategory = {
+        const category: ItemCategory = {
             id: resp.id,
             name: resp.categoryData?.name,
             parentCategory,
@@ -180,4 +182,186 @@ async function fetchSquareCategory(id: string): Promise<squareItemCategory> {
         return category;
     }
     return {};
+}
+
+/**
+ * Creates an order with square
+ * @param order the order to create
+ * @returns the created order
+ */
+export async function createSquareOrder(
+    order: Order,
+): Promise<Order | undefined | null> {
+    if (!order.lineItems) {
+        return null;
+    }
+
+    const idempotencyKey = crypto.randomUUID();
+    const response = await client.orders.create({
+        idempotencyKey: idempotencyKey,
+        order: {
+            locationId: order.locationId,
+            lineItems: order.lineItems.map((li) => {
+                const lineItem: OrderLineItem = {
+                    quantity: li.quantity!.toString(),
+                    catalogObjectId: li.itemId,
+                };
+                return lineItem;
+            }),
+            referenceId: order.referenceId,
+            source: order.source,
+        },
+    });
+
+    if (response) {
+        return response.order as Order;
+    }
+}
+
+/**
+ * Fetches an order from Square by ID
+ * @param orderId the id of the order to fetch
+ * @returns the order, or null if it doesn't exist
+ */
+export async function fetchSquareOrder(
+    orderId: string,
+): Promise<Order | undefined | null> {
+    if (!orderId) {
+        return null;
+    }
+
+    const response = await client.orders.get({ orderId });
+
+    if (response) {
+        return response.order as Order;
+    }
+}
+
+/**
+ * Creates a terminal checkour
+ * @param orderId the order id for the checkout process
+ * @param amount the amount to check out with a square terminal
+ * @param deviceId the device id to create the order on
+ * @returns the terminal checkout id
+ */
+export async function createTerminalCheckout(
+    orderId: string,
+    amount: Money,
+    deviceId: string,
+) {
+    if (!orderId || !amount || !deviceId) {
+        return null;
+    }
+
+    const idempotencyKey = crypto.randomUUID();
+    const response = await client.terminal.checkouts.create({
+        idempotencyKey: idempotencyKey,
+        checkout: {
+            amountMoney: {
+                currency: amount.currency as Currency,
+                amount: amount.amount,
+            },
+            deviceOptions: {
+                deviceId: deviceId,
+                showItemizedCart: true,
+            },
+            orderId: orderId,
+        },
+    });
+
+    if (response) {
+        return response.checkout?.id;
+    }
+}
+
+/**
+ * Checks the status of a terminal order
+ * @param checkoutId the id of the checkout
+ * @returns the status of the checkout
+ */
+export async function getTerminalCheckoutStatus(checkoutId: string) {
+    if (!checkoutId) {
+        return null;
+    }
+
+    const response = await client.terminal.checkouts.get({
+        checkoutId: checkoutId,
+    });
+
+    if (response) {
+        return response.checkout?.status;
+    }
+}
+
+/**
+ * Verifies a payment taken by the Square Mobile Payments SDK (phone-attached
+ * Reader) actually belongs to the given order before we trust it. We never
+ * see a card nonce for this path — the mobile app hands us a paymentId and
+ * we confirm it here.
+ * @param orderId the order the payment should be for
+ * @param paymentId the Square payment id returned by the Mobile Payments SDK
+ * @returns true if the payment is COMPLETED, for this order, and its amount matches the order total
+ */
+export async function confirmMobileReaderPayment(
+    orderId: string,
+    paymentId: string,
+): Promise<boolean> {
+    if (!orderId || !paymentId) {
+        return false;
+    }
+
+    const response = await client.payments.get({ paymentId });
+    const payment = response.payment;
+    if (!payment) {
+        return false;
+    }
+
+    if (payment.orderId !== orderId) {
+        return false;
+    }
+
+    if (payment.status !== "COMPLETED") {
+        return false;
+    }
+
+    const order = await fetchSquareOrder(orderId);
+    if (!order?.totalMoney?.amount || !payment.amountMoney?.amount) {
+        return false;
+    }
+
+    return payment.amountMoney.amount === order.totalMoney.amount;
+}
+
+export async function paySquareOrderWithCash(
+    orderId: string,
+    amountTendered: Money,
+    orderAmount: Money,
+) {
+    if (!orderId || !amountTendered || !orderAmount) {
+        return null;
+    }
+
+    const idempotencyKey = crypto.randomUUID();
+    const response = await client.payments.create({
+        idempotencyKey: idempotencyKey,
+        sourceId: "CASH",
+        // Square requires amountMoney to equal the order total when a
+        // payment is attached to an orderId. What the customer actually
+        // handed over goes in cashDetails.buyerSuppliedMoney — Square
+        // computes changeBackMoney as the difference itself.
+        amountMoney: {
+            amount: orderAmount.amount,
+            currency: orderAmount.currency as Currency,
+        },
+        autocomplete: true,
+        cashDetails: {
+            buyerSuppliedMoney: {
+                amount: amountTendered.amount,
+                currency: amountTendered.currency as Currency,
+            },
+        },
+        orderId: orderId,
+    });
+
+    return response.payment?.cashDetails?.changeBackMoney as Money;
 }

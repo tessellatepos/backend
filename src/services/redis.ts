@@ -1,7 +1,7 @@
 import { createClient } from "redis";
 import { Logger } from "tslog";
 import { configDotenv } from "dotenv";
-import { squareItem } from "@tessellate-pos/common/src/types/squareTypes";
+import { type Item } from "@tessellatepos/sdk";
 
 configDotenv();
 
@@ -33,7 +33,9 @@ export async function getRedisClient(): Promise<
             logger.error("Error reconnecting to Redis:", err);
             try {
                 await redis.quit();
-            } catch (_) {}
+            } catch (e) {
+                logger.error("Redis Error:", e);
+            }
             redis = undefined;
         }
     }
@@ -48,7 +50,7 @@ export async function getRedisClient(): Promise<
         url: process.env.REDIS_URL,
         // password: process.env.REDIS_PASSWORD,
         socket: {
-            // @ts-ignore, supposed to be a number, trust
+            // @ts-expect-error, supposed to be a number, trust
             keepAlive: 5000,
         },
     });
@@ -67,7 +69,9 @@ export async function getRedisClient(): Promise<
         logger.error("Redis connection error:", err);
         try {
             await client.quit();
-        } catch (_) {}
+        } catch (e) {
+            logger.error("Error reconnecting to Redis:", e);
+        }
         redis = undefined;
         throw err;
     }
@@ -80,7 +84,7 @@ export async function getRedisClient(): Promise<
  */
 export const setItemByItemID = async (
     key: string,
-    value: squareItem,
+    value: Item,
 ): Promise<void> => {
     if (!redis) {
         redis = await getRedisClient();
@@ -97,11 +101,9 @@ export const setItemByItemID = async (
  * Gets a value from the Redis cache using the provided key.
  * @param key The item id to retrieve.
  *
- * @returns {Promise<squareItem | null>} The retrieved value or null if not found.
+ * @returns {Promise<Item | null>} The retrieved value or null if not found.
  */
-export const getItemByItemID = async (
-    key: string,
-): Promise<squareItem | null> => {
+export const getItemByItemID = async (key: string): Promise<Item | null> => {
     if (!redis) {
         redis = await getRedisClient();
     }
@@ -109,7 +111,7 @@ export const getItemByItemID = async (
     try {
         const data = await redis.get(key);
         if (data) {
-            return JSON.parse(data) as squareItem;
+            return JSON.parse(data) as Item;
         } else {
             return null;
         }
@@ -129,9 +131,7 @@ export const getItemByItemID = async (
  * Note: We do not store per-variation keys anymore. Variations are filtered at read-time.
  * Assumption: the connector (square.ts) is responsible for ensuring variation metadata (e.g. itemId/parentId) is set. We do not generate ids.
  */
-export const setItemsByLocationID = async (
-    items: squareItem[],
-): Promise<void> => {
+export const setItemsByLocationID = async (items: Item[]): Promise<void> => {
     if (!redis) redis = await getRedisClient();
 
     if (!items || items.length === 0) {
@@ -191,11 +191,11 @@ export const setItemsByLocationID = async (
  * Retrieves all items (with only the variations that apply) for the provided locationID.
  * If no locationID is provided, the global set of items is used.
  *
- * Returns an array of squareItem where the `variations` array contains only the variations present for that location.
+ * Returns an array of Item where the `variations` array contains only the variations present for that location.
  */
 export const getItemsByLocationID = async (
     locationID?: string,
-): Promise<squareItem[]> => {
+): Promise<Item[]> => {
     if (!redis) redis = await getRedisClient();
     const client = redis!;
 
@@ -211,13 +211,13 @@ export const getItemsByLocationID = async (
         const itemPromises = itemIds.map((id) => client.get(ITEM_KEY(id)));
         const itemJsons = await Promise.all(itemPromises);
 
-        const results: squareItem[] = [];
+        const results: Item[] = [];
 
         for (let i = 0; i < itemJsons.length; i++) {
             const raw = itemJsons[i];
             if (!raw) continue;
             try {
-                const parsed = JSON.parse(raw) as squareItem;
+                const parsed = JSON.parse(raw) as Item;
                 const parentSummary = {
                     id: parsed.id,
                     name: parsed.name ?? null,
@@ -225,6 +225,7 @@ export const getItemsByLocationID = async (
 
                 if (Array.isArray(parsed.variations)) {
                     for (const v of parsed.variations) {
+                        // eslint-disable-next-line
                         v.parent = parentSummary as any;
                     }
                 }

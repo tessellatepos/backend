@@ -1,10 +1,7 @@
 import "dotenv/config";
-import { drizzle } from "drizzle-orm/postgres-js";
 import { eq } from "drizzle-orm";
 import { configSystemTable } from "@/services/db/schema";
-import { IConfigSystem } from "@tessellate-pos/common/src/types/database";
-import { configDotenv } from "dotenv";
-import postgres from "postgres";
+import { type IConfigSystem } from "@tessellatepos/common";
 import { drizzleDB } from "@/services/db/postgres";
 
 type TDrizzleDB = typeof drizzleDB;
