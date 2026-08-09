@@ -13,6 +13,8 @@ const LOCATION_ITEMS_SET = (locationID: string) =>
     `square:items:location:${locationID}`;
 const GLOBAL_ITEMS_SET = `square:items:all`;
 
+const ITEM_CACHE_TTL_SECONDS = 6 * 60 * 60;
+
 let redis: ReturnType<typeof createClient> | undefined;
 
 /**
@@ -94,6 +96,7 @@ export const setItemByItemID = async (
         JSON.stringify(value, (_, v) =>
             typeof v === "bigint" ? v.toString() : v,
         ),
+        { EX: ITEM_CACHE_TTL_SECONDS },
     );
 };
 
@@ -151,6 +154,7 @@ export const setItemsByLocationID = async (items: Item[]): Promise<void> => {
                 JSON.stringify(item, (_, v) =>
                     typeof v === "bigint" ? v.toString() : v,
                 ),
+                { EX: ITEM_CACHE_TTL_SECONDS },
             );
         } catch (err) {
             logger.error(`Failed to set item ${item.id} in redis:`, err);
@@ -158,8 +162,8 @@ export const setItemsByLocationID = async (items: Item[]): Promise<void> => {
 
         globalMembers.add(item.id);
 
-        if (item.presentAtLocationsIds) {
-            for (const locId of item.presentAtLocationsIds) {
+        if (item.locationIds) {
+            for (const locId of item.locationIds) {
                 const set = locationToMembers.get(locId);
                 if (set) {
                     if (!set.has(item.id)) set.add(item.id);
@@ -174,13 +178,16 @@ export const setItemsByLocationID = async (items: Item[]): Promise<void> => {
         for (const [loc, idsSet] of locationToMembers) {
             const members = Array.from(idsSet);
             if (members.length > 0) {
-                await redis.sAdd(LOCATION_ITEMS_SET(loc), members);
+                const locationKey = LOCATION_ITEMS_SET(loc);
+                await redis.sAdd(locationKey, members);
+                await redis.expire(locationKey, ITEM_CACHE_TTL_SECONDS);
             }
         }
 
         const globalArray = Array.from(globalMembers);
         if (globalArray.length > 0) {
             await redis.sAdd(GLOBAL_ITEMS_SET, globalArray);
+            await redis.expire(GLOBAL_ITEMS_SET, ITEM_CACHE_TTL_SECONDS);
         }
     } catch (err) {
         logger.error("Error updating item sets from catalog:", err);
