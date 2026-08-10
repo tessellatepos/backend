@@ -1,13 +1,6 @@
 import express, { Router } from "express";
 import { Logger } from "tslog";
-import {
-    confirmMobileReaderPayment,
-    createSquareOrder,
-    createTerminalCheckout,
-    fetchSquareOrder,
-    getTerminalCheckoutStatus,
-    paySquareOrderWithCash,
-} from "@/services/square";
+import { activeProvider } from "@/services/providers";
 import { getPairedDeviceByType } from "@/services/db/configDevice";
 import { insertOrder, syncOrderFromSquare } from "@/services/db/orders";
 import { bigintReplacer } from "@tessellatepos/sdk";
@@ -30,7 +23,7 @@ orderRouter.post("/create", async (req, res) => {
 
         orderDetails.referenceId = crypto.randomUUID();
 
-        const order = await createSquareOrder(orderDetails);
+        const order = await activeProvider.createOrder(orderDetails);
 
         if (order !== null && order !== undefined) {
             logger.debug("Created order:", order.referenceId);
@@ -55,6 +48,13 @@ orderRouter.post("/:orderId/checkout", async (req, res) => {
     try {
         const orderId = req.params.orderId;
 
+        if (!activeProvider.createTerminalCheckout) {
+            res.status(400).json({
+                message: "Terminal checkout is not supported by this provider",
+            });
+            return;
+        }
+
         const terminalDevice = await getPairedDeviceByType("TERMINAL");
         const deviceId = terminalDevice?.device_hardware_id;
         if (!deviceId) {
@@ -65,7 +65,7 @@ orderRouter.post("/:orderId/checkout", async (req, res) => {
             return;
         }
 
-        const order = await fetchSquareOrder(orderId);
+        const order = await activeProvider.fetchOrder(orderId);
         if (!order || !order.totalMoney) {
             res.status(404).json({
                 message: "Order not found or missing total",
@@ -73,7 +73,7 @@ orderRouter.post("/:orderId/checkout", async (req, res) => {
             return;
         }
 
-        const checkoutId = await createTerminalCheckout(
+        const checkoutId = await activeProvider.createTerminalCheckout(
             orderId,
             order.totalMoney,
             deviceId,
@@ -86,7 +86,8 @@ orderRouter.post("/:orderId/checkout", async (req, res) => {
             return;
         }
 
-        const status = await getTerminalCheckoutStatus(checkoutId);
+        const status =
+            await activeProvider.getTerminalCheckoutStatus?.(checkoutId);
 
         res.status(200).json({ checkoutId, status });
     } catch (error) {
@@ -99,14 +100,15 @@ orderRouter.get("/:orderId/checkout/:checkoutId", async (req, res) => {
     try {
         const { checkoutId } = req.params;
 
-        const status = await getTerminalCheckoutStatus(checkoutId);
+        const status =
+            await activeProvider.getTerminalCheckoutStatus?.(checkoutId);
         if (!status) {
             res.status(404).json({ message: "Checkout not found" });
             return;
         }
 
         if (status === "COMPLETED") {
-            const order = await fetchSquareOrder(req.params.orderId);
+            const order = await activeProvider.fetchOrder(req.params.orderId);
             if (order) {
                 await syncOrderFromSquare(order);
             }
@@ -132,7 +134,7 @@ orderRouter.post("/:orderId/pay-cash", async (req, res) => {
             return;
         }
 
-        const order = await fetchSquareOrder(orderId);
+        const order = await activeProvider.fetchOrder(orderId);
         if (!order || !order.totalMoney) {
             res.status(404).json({
                 message: "Order not found or missing total",
@@ -152,9 +154,9 @@ orderRouter.post("/:orderId/pay-cash", async (req, res) => {
             return;
         }
 
-        await paySquareOrderWithCash(orderId, tenderedMoney, order.totalMoney);
+        await activeProvider.payCash(orderId, tenderedMoney, order.totalMoney);
 
-        const paidOrder = await fetchSquareOrder(orderId);
+        const paidOrder = await activeProvider.fetchOrder(orderId);
         if (!paidOrder) {
             res.status(500).json({
                 message: "Payment may have succeeded but order refetch failed",
@@ -182,7 +184,18 @@ orderRouter.post("/:orderId/pay-mobile-reader", async (req, res) => {
             return;
         }
 
-        const verified = await confirmMobileReaderPayment(orderId, paymentId);
+        if (!activeProvider.confirmMobileReaderPayment) {
+            res.status(400).json({
+                message:
+                    "Mobile reader payment is not supported by this provider",
+            });
+            return;
+        }
+
+        const verified = await activeProvider.confirmMobileReaderPayment(
+            orderId,
+            paymentId,
+        );
         if (!verified) {
             res.status(400).json({
                 message: "Mobile reader payment could not be verified",
@@ -190,7 +203,7 @@ orderRouter.post("/:orderId/pay-mobile-reader", async (req, res) => {
             return;
         }
 
-        const order = await fetchSquareOrder(orderId);
+        const order = await activeProvider.fetchOrder(orderId);
         if (!order) {
             res.status(404).json({ message: "Order not found" });
             return;

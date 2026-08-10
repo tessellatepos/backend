@@ -6,7 +6,6 @@ import {
 } from "square";
 import type {
     Item,
-    ItemCatalog,
     ItemVariation,
     ItemCategory,
     ItemVariationLocationOverrides,
@@ -16,6 +15,8 @@ import type {
     Money,
 } from "@tessellatepos/sdk";
 import { configDotenv } from "dotenv";
+import type { CatalogProvider, PaymentProvider } from "../types";
+
 configDotenv();
 
 /**
@@ -26,40 +27,30 @@ const client = new SquareClient({
     environment: SquareEnvironment.Production,
 });
 
+function mapPricingType(
+    pricingType?: string,
+): "FIXED" | "VARIABLE" | undefined {
+    if (pricingType === "FIXED_PRICING") return "FIXED";
+    if (pricingType === "VARIABLE_PRICING") return "VARIABLE";
+    return undefined;
+}
+
 /**
  * Fetches the item catalog from Square.
- *
- * @returns {Promise<ItemCatalog>} The item catalog.
+ * @returns the items and, for each item id, the location ids it's present at
  */
-export async function fetchItems(): Promise<ItemCatalog> {
+async function fetchCatalog(): ReturnType<CatalogProvider["fetchCatalog"]> {
     const response = await client.catalog.list();
-    // const itemsMap = new Map<string, ISquareItem>();
-    const itemCatalog: ItemCatalog = {
-        items: [],
-    };
+    const items: Item[] = [];
+    const itemLocationIds = new Map<string, string[]>();
 
     // Iterate through the Page results
     for await (const item of response) {
         if (item.type === "ITEM") {
             if (!item.itemData) continue;
-            //Gets the image URLs if there are any images
-            const imageURLs: string[] = [];
-            if (item.itemData.imageIds) {
-                if (item.itemData.imageIds?.length > 0) {
-                    if (item.itemData.imageIds?.length > 1) {
-                        for (const imageId of item.itemData.imageIds) {
-                            if (!imageId) continue;
-                            const imageURL = await fetchSquareImage(imageId);
-                            imageURLs.push(imageURL);
-                        }
-                    } else {
-                        const imageURL = await fetchSquareImage(
-                            item.itemData.imageIds[0],
-                        );
-                        imageURLs.push(imageURL);
-                    }
-                }
-            }
+
+            const imageId = item.itemData.imageIds?.[0];
+            const image = imageId ? await fetchSquareImage(imageId) : null;
 
             const rawVariations = item.itemData.variations as
                 squareHelperItemVariation[] | undefined;
@@ -78,7 +69,9 @@ export async function fetchItems(): Promise<ItemCatalog> {
                     sku: varItem.itemVariationData.sku,
                     upc: varItem.itemVariationData.upc,
                     ordinal: varItem.itemVariationData.ordinal,
-                    pricingType: varItem.itemVariationData.pricingType,
+                    pricingType: mapPricingType(
+                        varItem.itemVariationData.pricingType,
+                    ),
                     priceMoney: varItem.itemVariationData.priceMoney,
                     locationOverrides:
                         varItem.itemVariationData.locationOverrides?.map(
@@ -86,7 +79,7 @@ export async function fetchItems(): Promise<ItemCatalog> {
                                 ({
                                     locationId: lo.locationId,
                                     priceMoney: lo.priceMoney,
-                                    pricingType: lo.pricingType,
+                                    pricingType: mapPricingType(lo.pricingType),
                                     trackInventory: lo.trackInventory,
                                 }) as ItemVariationLocationOverrides,
                         ),
@@ -106,35 +99,26 @@ export async function fetchItems(): Promise<ItemCatalog> {
                 categories.push(category);
             }
 
-            //get categories
-            const reportingCategory: ItemCategory[] = [];
-            for (const cat of rawCategories || []) {
-                if (!cat.id) continue;
-                const category = await fetchSquareCategory(cat.id);
-                reportingCategory.push(category);
-            }
-
             //Construct the catalog item
             const catalogItem: Item = {
                 id: item.id,
                 name: item.itemData.name,
-                buyerFacingName: item.itemData.buyerFacingName,
+                displayName: item.itemData.buyerFacingName,
                 labelColor: item.itemData.labelColor,
                 isTaxable: item.itemData.isTaxable,
                 variations: variations,
                 categories: categories,
                 isArchived: item.itemData.isArchived,
-                reportingCategoryIds: reportingCategory,
-                presentAtAllLocations: item.presentAtAllLocations,
-                presentAtLocationsIds: item.presentAtLocationIds,
-                imageIds: item.itemData.imageIds,
-                imageURLs: imageURLs,
+                image: image,
             };
-            //Add the item to the catalog
-            itemCatalog.items.push(catalogItem);
+            items.push(catalogItem);
+
+            if (item.presentAtLocationIds) {
+                itemLocationIds.set(item.id, item.presentAtLocationIds);
+            }
         }
     }
-    return itemCatalog;
+    return { items, itemLocationIds };
 }
 
 /**
@@ -170,8 +154,6 @@ async function fetchSquareCategory(id: string): Promise<ItemCategory> {
             id: resp.id,
             name: resp.categoryData?.name,
             parentCategory,
-            presentAtAllLocations: resp.presentAtAllLocations,
-            presentAtLocationsIds: resp.presentAtLocationIds,
             imageId: resp.categoryData?.imageIds
                 ? resp.categoryData.imageIds[0]
                 : null,
@@ -189,9 +171,7 @@ async function fetchSquareCategory(id: string): Promise<ItemCategory> {
  * @param order the order to create
  * @returns the created order
  */
-export async function createSquareOrder(
-    order: Order,
-): Promise<Order | undefined | null> {
+async function createOrder(order: Order): Promise<Order | undefined | null> {
     if (!order.lineItems) {
         return null;
     }
@@ -223,9 +203,7 @@ export async function createSquareOrder(
  * @param orderId the id of the order to fetch
  * @returns the order, or null if it doesn't exist
  */
-export async function fetchSquareOrder(
-    orderId: string,
-): Promise<Order | undefined | null> {
+async function fetchOrder(orderId: string): Promise<Order | undefined | null> {
     if (!orderId) {
         return null;
     }
@@ -244,7 +222,7 @@ export async function fetchSquareOrder(
  * @param deviceId the device id to create the order on
  * @returns the terminal checkout id
  */
-export async function createTerminalCheckout(
+async function createTerminalCheckout(
     orderId: string,
     amount: Money,
     deviceId: string,
@@ -279,7 +257,7 @@ export async function createTerminalCheckout(
  * @param checkoutId the id of the checkout
  * @returns the status of the checkout
  */
-export async function getTerminalCheckoutStatus(checkoutId: string) {
+async function getTerminalCheckoutStatus(checkoutId: string) {
     if (!checkoutId) {
         return null;
     }
@@ -302,7 +280,7 @@ export async function getTerminalCheckoutStatus(checkoutId: string) {
  * @param paymentId the Square payment id returned by the Mobile Payments SDK
  * @returns true if the payment is COMPLETED, for this order, and its amount matches the order total
  */
-export async function confirmMobileReaderPayment(
+async function confirmMobileReaderPayment(
     orderId: string,
     paymentId: string,
 ): Promise<boolean> {
@@ -324,7 +302,7 @@ export async function confirmMobileReaderPayment(
         return false;
     }
 
-    const order = await fetchSquareOrder(orderId);
+    const order = await fetchOrder(orderId);
     if (!order?.totalMoney?.amount || !payment.amountMoney?.amount) {
         return false;
     }
@@ -332,7 +310,17 @@ export async function confirmMobileReaderPayment(
     return payment.amountMoney.amount === order.totalMoney.amount;
 }
 
-export async function paySquareOrderWithCash(
+/**
+ * Pays an order with cash. Square requires amountMoney to equal the order
+ * total when a payment is attached to an orderId — what the customer
+ * actually handed over goes in cashDetails.buyerSuppliedMoney, and Square
+ * computes changeBackMoney as the difference itself.
+ * @param orderId the order to pay
+ * @param amountTendered the cash amount the customer handed over
+ * @param orderAmount the order's total (must match amountMoney sent to Square)
+ * @returns the change due back to the customer
+ */
+async function payCash(
     orderId: string,
     amountTendered: Money,
     orderAmount: Money,
@@ -345,10 +333,6 @@ export async function paySquareOrderWithCash(
     const response = await client.payments.create({
         idempotencyKey: idempotencyKey,
         sourceId: "CASH",
-        // Square requires amountMoney to equal the order total when a
-        // payment is attached to an orderId. What the customer actually
-        // handed over goes in cashDetails.buyerSuppliedMoney — Square
-        // computes changeBackMoney as the difference itself.
         amountMoney: {
             amount: orderAmount.amount,
             currency: orderAmount.currency as Currency,
@@ -365,3 +349,13 @@ export async function paySquareOrderWithCash(
 
     return response.payment?.cashDetails?.changeBackMoney as Money;
 }
+
+export const squareProvider: CatalogProvider & PaymentProvider = {
+    fetchCatalog,
+    createOrder,
+    fetchOrder,
+    createTerminalCheckout,
+    getTerminalCheckoutStatus,
+    payCash,
+    confirmMobileReaderPayment,
+};
