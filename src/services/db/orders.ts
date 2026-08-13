@@ -2,21 +2,10 @@ import "dotenv/config";
 import { eq } from "drizzle-orm";
 import { squareOrdersTable } from "./schema";
 import { drizzleDB } from "@/services/db/postgres";
-import { bigintReplacer } from "@tessellatepos/sdk";
+import { stripBigints } from "@tessellatepos/sdk";
 import type { Order } from "@tessellatepos/sdk";
 
 type TDrizzleDB = typeof drizzleDB;
-
-/**
- * Recursively converts bigints (e.g. Money amounts, item quantities) into
- * strings so the value can be stored in a jsonb column.
- */
-function serializeForJsonb<T>(value: T): T {
-    if (value === undefined) {
-        return null as T;
-    }
-    return JSON.parse(JSON.stringify(value, bigintReplacer));
-}
 
 function toDbOrder(order: Order): typeof squareOrdersTable.$inferInsert {
     return {
@@ -25,19 +14,19 @@ function toDbOrder(order: Order): typeof squareOrdersTable.$inferInsert {
         referenceId: order.referenceId!,
         sourceName: order.source?.name ?? null,
         customerId: order.customerId ?? null,
-        lineItems: serializeForJsonb(order.lineItems ?? null),
-        taxes: serializeForJsonb(order.taxes ?? null),
-        discounts: serializeForJsonb(order.discounts ?? []),
-        netAmount: serializeForJsonb(order.netAmount ?? null),
-        roundingAdjustment: serializeForJsonb(order.roundingAdjustment ?? null),
-        tenders: serializeForJsonb(order.tenders ?? null),
+        lineItems: stripBigints(order.lineItems ?? null),
+        taxes: stripBigints(order.taxes ?? null),
+        discounts: stripBigints(order.discounts ?? []),
+        netAmount: stripBigints(order.netAmount ?? null),
+        roundingAdjustment: stripBigints(order.roundingAdjustment ?? null),
+        tenders: stripBigints(order.tenders ?? null),
         state: order.state ?? null,
         version: order.version ?? null,
-        totalMoney: serializeForJsonb(order.totalMoney ?? null),
-        totalTaxMoney: serializeForJsonb(order.totalTaxMoney ?? null),
-        totalDiscountMoney: serializeForJsonb(order.totalDiscountMoney ?? null),
-        totalTipMoney: serializeForJsonb(order.totalTipMoney ?? null),
-        totalServiceChargeMoney: serializeForJsonb(
+        totalMoney: stripBigints(order.totalMoney ?? null),
+        totalTaxMoney: stripBigints(order.totalTaxMoney ?? null),
+        totalDiscountMoney: stripBigints(order.totalDiscountMoney ?? null),
+        totalTipMoney: stripBigints(order.totalTipMoney ?? null),
+        totalServiceChargeMoney: stripBigints(
             order.totalServiceChargeMoney ?? null,
         ),
     };

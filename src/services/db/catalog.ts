@@ -8,16 +8,37 @@ import {
     catalogItemLocationsTable,
 } from "./schema";
 import { drizzleDB } from "@/services/db/postgres";
+import { parseMoney, stripBigints } from "@tessellatepos/sdk";
 import type {
     Item,
     ItemCatalog,
     ItemCategory,
     ItemVariation,
-    Money,
     ItemVariationLocationOverrides,
 } from "@tessellatepos/sdk";
 
 type TDrizzleDB = typeof drizzleDB;
+
+/**
+ * Reverses serializeForJsonb for stored location overrides, reviving each
+ * override's priceMoney.amount back to bigint.
+ * @param raw the jsonb value read back from a locationOverrides column
+ * @returns the parsed overrides, or null if raw wasn't an array
+ */
+function parseLocationOverrides(
+    raw: unknown,
+): ItemVariationLocationOverrides[] | null {
+    if (!Array.isArray(raw)) return null;
+    return raw.map((override: ItemVariationLocationOverrides) => ({
+        ...override,
+        priceMoney: override.priceMoney
+            ? {
+                  amount: BigInt(override.priceMoney.amount),
+                  currency: override.priceMoney.currency,
+              }
+            : undefined,
+    }));
+}
 
 export interface ProviderCatalogResult {
     items: Item[];
@@ -77,8 +98,8 @@ async function upsertVariation(
         upc: variation.upc ?? null,
         ordinal: variation.ordinal ?? null,
         pricingType: variation.pricingType ?? null,
-        priceMoney: variation.priceMoney ?? null,
-        locationOverrides: variation.locationOverrides ?? null,
+        priceMoney: stripBigints(variation.priceMoney ?? null),
+        locationOverrides: stripBigints(variation.locationOverrides ?? null),
         trackInventory: variation.trackInventory ?? null,
     };
 
@@ -255,9 +276,8 @@ export async function getCatalogByLocation(
             upc: row.upc,
             ordinal: row.ordinal,
             pricingType: row.pricingType ?? undefined,
-            priceMoney: (row.priceMoney as Money | null) ?? undefined,
-            locationOverrides: row.locationOverrides as
-                ItemVariationLocationOverrides[] | null,
+            priceMoney: parseMoney(row.priceMoney),
+            locationOverrides: parseLocationOverrides(row.locationOverrides),
             trackInventory: row.trackInventory,
             parent: { id: row.itemId, name: itemNameById.get(row.itemId) },
         });

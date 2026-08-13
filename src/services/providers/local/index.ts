@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { parseMoney, stripBigints } from "@tessellatepos/sdk";
 import type {
     CartItem,
     Discount,
@@ -15,22 +16,6 @@ import {
 import { getCatalogByLocation } from "@/services/db/catalog";
 import { getOrderById, updateOrder } from "@/services/db/orders";
 import type { CatalogProvider, PaymentProvider } from "../types";
-
-/**
- * Money amounts are stored in jsonb as plain JSON, so bigint amounts come
- * back as strings — this converts them back to bigint.
- * @param raw the jsonb value read back from a Money column
- * @returns the parsed Money, or undefined if raw wasn't a Money-shaped value
- */
-function parseMoney(raw: unknown): Money | undefined {
-    if (!raw || typeof raw !== "object") return undefined;
-    const { amount, currency } = raw as {
-        amount?: string | number;
-        currency?: string;
-    };
-    if (amount === undefined || currency === undefined) return undefined;
-    return { amount: BigInt(amount), currency };
-}
 
 /**
  * Converts a persisted square-orders row back into an Order.
@@ -83,7 +68,10 @@ async function markOrderPaidWithCard(orderId: string): Promise<boolean> {
 
     await updateOrder(orderId, {
         state: "COMPLETED",
-        tenders: [...((row.tenders as Tender[] | null) ?? []), tender],
+        tenders: stripBigints([
+            ...((row.tenders as Tender[] | null) ?? []),
+            tender,
+        ]),
     });
 
     return true;
@@ -116,8 +104,10 @@ async function createOrder(order: Order): Promise<Order | undefined | null> {
     let currency = "CAD";
 
     for (const lineItem of order.lineItems) {
-        const quantity = lineItem.quantity ?? 1n;
-        let unitPrice = lineItem.priceMoney;
+        const quantity = BigInt(lineItem.quantity ?? 1n);
+        let unitPrice = lineItem.priceMoney
+            ? parseMoney(lineItem.priceMoney)
+            : undefined;
 
         if (!unitPrice?.amount && lineItem.itemId) {
             const [variationRow] = await drizzleDB
@@ -197,7 +187,10 @@ async function payCash(
 
     await updateOrder(orderId, {
         state: "COMPLETED",
-        tenders: [...((row.tenders as Tender[] | null) ?? []), tender],
+        tenders: stripBigints([
+            ...((row.tenders as Tender[] | null) ?? []),
+            tender,
+        ]),
     });
 
     return changeBackMoney;
