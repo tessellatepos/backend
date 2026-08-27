@@ -1,6 +1,7 @@
 import express, { Router } from "express";
 import { getRedisClient, setItemsByLocationID } from "@/services/redis";
 import { activeProvider } from "@/services/providers";
+import { runMigrations } from "@/services/db/postgres";
 import {
     getCatalogByLocation,
     importCatalogFromProvider,
@@ -11,7 +12,7 @@ import { configSettingRouter } from "@/endpoints/v1/config/settings";
 import { Logger } from "tslog";
 import cors from "cors";
 import { squareRouter } from "@/endpoints/v1/square";
-import { type IServerAPIRouter } from "@tessellatepos/common";
+import { type IServerAPIRouter } from "@/types/endpoints";
 import { baseRouter } from "@/endpoints/base";
 import * as http from "node:http";
 import { setupWebSocket } from "@/services/websocket/websocket";
@@ -56,6 +57,8 @@ async function start() {
         if (!redis) {
             throw new Error("Redis client not available");
         }
+
+        await runMigrations();
 
         // Initial catalog update, then keep it in sync on an hourly interval
         await updateCatalogInCache();

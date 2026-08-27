@@ -5,7 +5,7 @@ import {
     getConfigSystem,
     updateConfigSystem,
 } from "@/services/db/configSystem";
-import { type IConfigSystem } from "@tessellatepos/common";
+import { type IConfigSystem } from "@/types/database";
 
 export const configSettingRouter: Router = express.Router();
 
