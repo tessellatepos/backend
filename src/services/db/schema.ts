@@ -17,7 +17,7 @@ export const deviceTypeEnum = pgEnum("device_type", [
 
 export const pricingTypeEnum = pgEnum("pricing_type", ["FIXED", "VARIABLE"]);
 
-export const configDevicesTable = pgTable("config-devices", {
+export const configDevicesTable = pgTable("tessellate-devices-config", {
     id: varchar("id", { length: 12 }).primaryKey(),
     created_at: timestamp("entry_created_at", {
         withTimezone: true,
@@ -33,7 +33,7 @@ export const configDevicesTable = pgTable("config-devices", {
     device_type: deviceTypeEnum("device_type"),
 });
 
-export const configSystemTable = pgTable("config-system", {
+export const configSystemTable = pgTable("tessellate-system-config", {
     id: integer("id").primaryKey(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     encryptedAccessToken: text("encrypted_access_token").notNull(),
@@ -41,7 +41,7 @@ export const configSystemTable = pgTable("config-system", {
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
-export const squareOrdersTable = pgTable("square-orders", {
+export const ordersTable = pgTable("tessellate-orders", {
     id: text("id"),
     locationId: text("location_id").notNull(),
     referenceId: varchar("reference_id", { length: 255 }).primaryKey(),
@@ -64,7 +64,7 @@ export const squareOrdersTable = pgTable("square-orders", {
     totalServiceChargeMoney: jsonb("total_service_charge_money"),
 });
 
-export const catalogItemsTable = pgTable("catalog-items", {
+export const catalogItemsTable = pgTable("tessellate-catalog-items", {
     id: varchar("id", { length: 255 }).primaryKey(),
     name: text("name"),
     displayName: text("display_name"),
@@ -77,7 +77,7 @@ export const catalogItemsTable = pgTable("catalog-items", {
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
-export const catalogItemVariationsTable = pgTable("catalog-item-variations", {
+export const catalogItemVariationsTable = pgTable("tessellate-catalog-item-variations", {
     variationId: varchar("variation_id", { length: 255 }).primaryKey(),
     itemId: varchar("item_id", { length: 255 })
         .notNull()
@@ -95,7 +95,7 @@ export const catalogItemVariationsTable = pgTable("catalog-item-variations", {
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
-export const catalogCategoriesTable = pgTable("catalog-categories", {
+export const catalogCategoriesTable = pgTable("tessellate-catalog-categories", {
     id: varchar("id", { length: 255 }).primaryKey(),
     name: text("name"),
     parentCategoryId: varchar("parent_category_id", {
@@ -109,7 +109,7 @@ export const catalogCategoriesTable = pgTable("catalog-categories", {
 });
 
 export const catalogItemCategoriesTable = pgTable(
-    "catalog-item-categories",
+    "tessellate-catalog-item-categories",
     {
         itemId: varchar("item_id", { length: 255 })
             .notNull()
@@ -122,7 +122,7 @@ export const catalogItemCategoriesTable = pgTable(
 );
 
 export const catalogItemLocationsTable = pgTable(
-    "catalog-item-locations",
+    "tessellate-catalog-item-locations",
     {
         itemId: varchar("item_id", { length: 255 })
             .notNull()

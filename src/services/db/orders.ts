@@ -1,13 +1,13 @@
 import "dotenv/config";
 import { eq } from "drizzle-orm";
-import { squareOrdersTable } from "./schema";
+import { ordersTable } from "./schema";
 import { drizzleDB } from "@/services/db/postgres";
 import { stripBigints } from "@tessellatepos/sdk";
 import type { Order } from "@tessellatepos/sdk";
 
 type TDrizzleDB = typeof drizzleDB;
 
-function toDbOrder(order: Order): typeof squareOrdersTable.$inferInsert {
+function toDbOrder(order: Order): typeof ordersTable.$inferInsert {
     return {
         id: order.id ?? null,
         locationId: order.locationId,
@@ -43,7 +43,7 @@ export async function insertOrder(order: Order, db: TDrizzleDB = drizzleDB) {
     }
 
     const dbOrder = toDbOrder(order);
-    await db.insert(squareOrdersTable).values(dbOrder);
+    await db.insert(ordersTable).values(dbOrder);
     return dbOrder;
 }
 
@@ -64,9 +64,9 @@ export async function syncOrderFromSquare(
 
     const dbOrder = toDbOrder(order);
     await db
-        .update(squareOrdersTable)
+        .update(ordersTable)
         .set({ ...dbOrder, updatedAt: new Date() })
-        .where(eq(squareOrdersTable.referenceId, order.referenceId));
+        .where(eq(ordersTable.referenceId, order.referenceId));
     return dbOrder;
 }
 
@@ -81,8 +81,8 @@ export async function getOrderById(
 ) {
     const order = await db
         .select()
-        .from(squareOrdersTable)
-        .where(eq(squareOrdersTable.referenceId, referenceId))
+        .from(ordersTable)
+        .where(eq(ordersTable.referenceId, referenceId))
         .limit(1);
     return order[0] || null;
 }
@@ -94,11 +94,11 @@ export async function getOrderById(
  */
 export async function updateOrder(
     referenceId: string,
-    updates: Partial<typeof squareOrdersTable.$inferInsert>,
+    updates: Partial<typeof ordersTable.$inferInsert>,
     db: TDrizzleDB = drizzleDB,
 ) {
     await db
-        .update(squareOrdersTable)
+        .update(ordersTable)
         .set(updates)
-        .where(eq(squareOrdersTable.referenceId, referenceId));
+        .where(eq(ordersTable.referenceId, referenceId));
 }

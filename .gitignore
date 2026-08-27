@@ -19,7 +19,6 @@ bun.lockb
 # production
 /build/*
 /dist/*
-/drizzle/*
 
 # misc
 .DS_Store

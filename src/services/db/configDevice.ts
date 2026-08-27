@@ -3,7 +3,7 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 import { configDevicesTable } from "./schema";
 import { drizzleDB } from "@/services/db/postgres";
-import type { DeviceType } from "@tessellatepos/common";
+import type { DeviceType } from "@tessellatepos/sdk";
 
 type TDrizzleDB = typeof drizzleDB;
 
