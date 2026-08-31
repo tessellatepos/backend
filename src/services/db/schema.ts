@@ -38,6 +38,13 @@ export const configSystemTable = pgTable("tessellate-system-config", {
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     encryptedAccessToken: text("encrypted_access_token").notNull(),
     encryptedRefreshToken: text("encrypted_refresh_token").notNull(),
+    applicationId: text("application_id"),
+    locationId: text("location_id"),
+    merchantId: text("merchant_id"),
+    tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at", {
+        withTimezone: true,
+    }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
@@ -77,23 +84,26 @@ export const catalogItemsTable = pgTable("tessellate-catalog-items", {
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
-export const catalogItemVariationsTable = pgTable("tessellate-catalog-item-variations", {
-    variationId: varchar("variation_id", { length: 255 }).primaryKey(),
-    itemId: varchar("item_id", { length: 255 })
-        .notNull()
-        .references(() => catalogItemsTable.id),
-    name: text("name"),
-    sku: varchar("sku", { length: 255 }),
-    upc: varchar("upc", { length: 255 }),
-    ordinal: text("ordinal"),
-    pricingType: pricingTypeEnum("pricing_type"),
-    priceMoney: jsonb("price_money"),
-    locationOverrides: jsonb("location_overrides"),
-    trackInventory: boolean("track_inventory"),
-    providerMetadata: jsonb("provider_metadata"),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
-});
+export const catalogItemVariationsTable = pgTable(
+    "tessellate-catalog-item-variations",
+    {
+        variationId: varchar("variation_id", { length: 255 }).primaryKey(),
+        itemId: varchar("item_id", { length: 255 })
+            .notNull()
+            .references(() => catalogItemsTable.id),
+        name: text("name"),
+        sku: varchar("sku", { length: 255 }),
+        upc: varchar("upc", { length: 255 }),
+        ordinal: text("ordinal"),
+        pricingType: pricingTypeEnum("pricing_type"),
+        priceMoney: jsonb("price_money"),
+        locationOverrides: jsonb("location_overrides"),
+        trackInventory: boolean("track_inventory"),
+        providerMetadata: jsonb("provider_metadata"),
+        createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+        updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+    },
+);
 
 export const catalogCategoriesTable = pgTable("tessellate-catalog-categories", {
     id: varchar("id", { length: 255 }).primaryKey(),
@@ -131,3 +141,12 @@ export const catalogItemLocationsTable = pgTable(
     },
     (table) => [primaryKey({ columns: [table.itemId, table.locationId] })],
 );
+
+export const pluginRegistryTable = pgTable("tessellate-plugin-registry", {
+    id: varchar("id", { length: 255 }).primaryKey().notNull(),
+    version: varchar("version", { length: 255 }),
+    source: jsonb("source_ref"),
+    sha256: varchar("sha256", { length: 255 }),
+    tables: jsonb("tables"),
+    installedAt: timestamp("installed_at"),
+});

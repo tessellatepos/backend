@@ -21,3 +21,25 @@ export async function updateConfigSystem(
         .set(updates)
         .where(eq(configSystemTable.id, 1));
 }
+
+/**
+ * Writes the single system-config row, creating it if this deployment has
+ * never been configured (the OAuth callback is usually what creates it).
+ * @param values the columns to write
+ */
+export async function upsertConfigSystem(
+    values: Omit<typeof configSystemTable.$inferInsert, "id">,
+    db: TDrizzleDB = drizzleDB,
+) {
+    return db
+        .insert(configSystemTable)
+        .values({ id: 1, ...values })
+        .onConflictDoUpdate({
+            target: configSystemTable.id,
+            set: { ...values, updatedAt: new Date() },
+        });
+}
+
+export async function deleteConfigSystem(db: TDrizzleDB = drizzleDB) {
+    return db.delete(configSystemTable).where(eq(configSystemTable.id, 1));
+}
