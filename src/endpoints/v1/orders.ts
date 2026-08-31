@@ -5,6 +5,7 @@ import { getPairedDeviceByType } from "@/services/db/configDevice";
 import { insertOrder, syncOrderFromSquare } from "@/services/db/orders";
 import { bigintReplacer } from "@tessellatepos/sdk";
 import type { Money, Order } from "@tessellatepos/sdk";
+import { emitPaymentStatusEvent } from "@/services/websocket/events";
 
 export const orderRouter: Router = express.Router();
 
@@ -209,6 +210,16 @@ orderRouter.post("/:orderId/pay-mobile-reader", async (req, res) => {
             return;
         }
         await syncOrderFromSquare(order);
+
+        emitPaymentStatusEvent({
+            type: "payment_status",
+            payload: {
+                orderId,
+                status: "COMPLETED",
+                paymentMethod: "MOBILE_READER",
+                paymentId,
+            },
+        });
 
         res.status(200)
             .header("Content-Type", "application/json")

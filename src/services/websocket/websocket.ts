@@ -36,6 +36,15 @@ export function setupWebSocket(server: Server) {
         }
     });
 
+    appEvents.on("payment_status", (event) => {
+        const message = JSON.stringify(event);
+        for (const client of clients) {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(message);
+            }
+        }
+    });
+
     logger.info("WebSocket server initialized");
     return wss;
 }
