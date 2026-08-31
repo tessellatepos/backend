@@ -1,9 +1,4 @@
-import {
-    Currency,
-    OrderLineItem,
-    SquareClient,
-    SquareEnvironment,
-} from "square";
+import { Currency, OrderLineItem, SquareClient } from "square";
 import type {
     Item,
     ItemVariation,
@@ -16,15 +11,42 @@ import type {
 } from "@tessellatepos/sdk";
 import { configDotenv } from "dotenv";
 import type { CatalogProvider, PaymentProvider } from "../types";
+import {
+    getDecryptedAccessToken,
+    getSquareEnvironment,
+} from "@/services/squareOauth";
 
 configDotenv();
 
 /**
- * Square Client instance.
+ * Resolves the token each request goes out with: the seller's stored OAuth
+ * access token, refreshed on demand. SQUARE_TOKEN remains a development
+ * fallback for a deployment that hasn't been through the OAuth flow yet.
+ * @returns a Square access token
+ */
+async function resolveAccessToken(): Promise<string> {
+    const oauthToken = await getDecryptedAccessToken();
+    if (oauthToken) {
+        return oauthToken;
+    }
+
+    if (process.env.SQUARE_TOKEN) {
+        return process.env.SQUARE_TOKEN;
+    }
+
+    throw new Error(
+        "Square is not connected — complete the OAuth flow in Settings or set SQUARE_TOKEN",
+    );
+}
+
+/**
+ * Square Client instance. The token is supplied per request rather than
+ * captured at startup so a newly-completed authorization (or a refresh) takes
+ * effect without restarting the server.
  */
 const client = new SquareClient({
-    token: process.env.SQUARE_TOKEN,
-    environment: SquareEnvironment.Production,
+    token: () => resolveAccessToken(),
+    environment: getSquareEnvironment(),
 });
 
 function mapPricingType(
