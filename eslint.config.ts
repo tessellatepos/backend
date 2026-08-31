@@ -10,7 +10,11 @@ export default defineConfig([
         plugins: {
             "@typescript-eslint": tseslint.plugin,
         },
-        extends: [js.configs.recommended, ...tseslint.configs.recommended],
+        extends: [
+            js.configs.recommended,
+            ...tseslint.configs.recommended,
+            eslintPluginPrettierRecommended,
+        ],
         languageOptions: {
             parserOptions: {
                 ecmaVersion: "latest",
@@ -18,5 +22,4 @@ export default defineConfig([
             globals: globals.browser,
         },
     },
-    [eslintPluginPrettierRecommended],
 ]);
