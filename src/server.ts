@@ -16,6 +16,8 @@ import { baseRouter } from "@/endpoints/base";
 import * as http from "node:http";
 import { setupWebSocket } from "@/services/websocket/websocket";
 import { orderRouter } from "@/endpoints/v1/orders";
+import { authRouter } from "./endpoints/v1/auth";
+import { refreshIfNeeded } from "@/services/squareOauth";
 
 const app = express();
 const corsOptions = {
@@ -37,6 +39,14 @@ async function start() {
 
         await runMigrations();
 
+        // Renew the stored Square token before anything tries to use it. A
+        // failure here isn't fatal — the deployment may not be connected yet.
+        try {
+            await refreshIfNeeded();
+        } catch (err) {
+            logger.warn("Could not refresh the Square OAuth token:", err);
+        }
+
         // Initial catalog update, then keep it in sync on an hourly interval
         await updateCatalogInCache();
         startCatalogSyncInterval();
@@ -48,6 +58,7 @@ async function start() {
             { endpoint: "/api/v1/items", router: itemRouter },
             { endpoint: "/api/v1/square", router: squareRouter },
             { endpoint: "/api/v1/orders", router: orderRouter },
+            { endpoint: "/api/v1/auth", router: authRouter },
         ];
 
         routes.forEach((route) => {

@@ -11,7 +11,7 @@ import type {
 import { drizzleDB } from "@/services/db/postgres";
 import {
     catalogItemVariationsTable,
-    squareOrdersTable,
+    ordersTable,
 } from "@/services/db/schema";
 import { getCatalogByLocation } from "@/services/db/catalog";
 import { getOrderById, updateOrder } from "@/services/db/orders";
@@ -22,7 +22,7 @@ import type { CatalogProvider, PaymentProvider } from "../types";
  * @param row the persisted order row
  * @returns the order
  */
-function rowToOrder(row: typeof squareOrdersTable.$inferSelect): Order {
+function rowToOrder(row: typeof ordersTable.$inferSelect): Order {
     return {
         id: row.id ?? undefined,
         locationId: row.locationId,
