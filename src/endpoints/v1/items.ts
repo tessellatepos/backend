@@ -3,7 +3,7 @@ import { Request, Response, Router } from "express";
 import { getItemsByLocationID } from "@/services/redis";
 import { type Item } from "@tessellatepos/sdk";
 import { Logger } from "tslog";
-import { updateCatalogInCache } from "@/server";
+import { updateCatalogInCache } from "@/services/catalogSync";
 import { getParamValue } from "@/utils/expressHelpers";
 
 export const itemRouter: Router = express.Router();

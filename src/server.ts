@@ -1,11 +1,10 @@
 import express, { Router } from "express";
-import { getRedisClient, setItemsByLocationID } from "@/services/redis";
-import { activeProvider } from "@/services/providers";
+import { getRedisClient } from "@/services/redis";
 import { runMigrations } from "@/services/db/postgres";
 import {
-    getCatalogByLocation,
-    importCatalogFromProvider,
-} from "@/services/db/catalog";
+    startCatalogSyncInterval,
+    updateCatalogInCache,
+} from "@/services/catalogSync";
 import { itemRouter } from "@/endpoints/v1/items";
 import { configDeviceRouter } from "@/endpoints/v1/config/devices";
 import { configSettingRouter } from "@/endpoints/v1/config/settings";
@@ -28,28 +27,6 @@ app.use(express.json());
 
 const logger = new Logger();
 
-const CATALOG_SYNC_INTERVAL_MS = 60 * 60 * 1000;
-
-/**
- * Imports the catalog from the active provider into Postgres, then
- * refreshes the Redis cache from Postgres.
- */
-export async function updateCatalogInCache() {
-    const redis = await getRedisClient();
-
-    if (!redis) {
-        throw new Error("Redis client not available");
-    }
-
-    logger.debug("updateCatalogInCache");
-
-    const providerCatalog = await activeProvider.fetchCatalog();
-    await importCatalogFromProvider(providerCatalog);
-
-    const catalog = await getCatalogByLocation();
-    await setItemsByLocationID(catalog.items);
-}
-
 async function start() {
     try {
         const redis = await getRedisClient(); // await the async function
@@ -62,10 +39,7 @@ async function start() {
 
         // Initial catalog update, then keep it in sync on an hourly interval
         await updateCatalogInCache();
-        setInterval(
-            () => void updateCatalogInCache(),
-            CATALOG_SYNC_INTERVAL_MS,
-        );
+        startCatalogSyncInterval();
 
         const routes: IServerAPIRouter<Router>[] = [
             { endpoint: "/", router: baseRouter },
