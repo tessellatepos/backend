@@ -1,5 +1,5 @@
 import { baseEndpoint } from "@/endpoints/base";
-import { ITessellateApiRouter } from "./apiRegistry";
+import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 import { configDevicev1Endpoint } from "@/endpoints/v1/config/devices"
 import { configSettingsv1Endpoint } from "@/endpoints/v1/config/settings"
 import { itemsv1Endpoint } from "@/endpoints/v1/items";
