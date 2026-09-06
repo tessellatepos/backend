@@ -12,10 +12,17 @@ import {
 } from "@/services/db/configDevice";
 import { type IConfigDevice } from "@tessellatepos/sdk";
 import { getParamValue } from "@/utils/expressHelpers";
+import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 
-export const configDeviceRouter: Router = express.Router();
+const configDeviceRouter: Router = express.Router();
 
 const logger = new Logger();
+
+export const configDevicev1Endpoint: ITessellateApiRouter = {
+    route_path: "/config/devices",
+    version: "v1",
+    router: configDeviceRouter
+}
 
 configDeviceRouter.get("/", async (req, res) => {
     logger.info("Received GET request for all device configurations");

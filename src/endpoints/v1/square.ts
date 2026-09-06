@@ -13,10 +13,17 @@ import {
 } from "@/services/squareOauth";
 import { getConfigDeviceByID } from "@/services/db/configDevice";
 import { updateCatalogInCache } from "@/services/catalogSync";
+import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 
-export const squareRouter: Router = express.Router();
+const squareRouter: Router = express.Router();
 
 const logger = new Logger();
+
+export const squarev1Endpoint: ITessellateApiRouter = {
+    route_path: "/square",
+    version: "v1",
+    router: squareRouter
+}
 
 squareRouter.get("/locations", async (req, res) => {
     logger.info("Received GET request for Square locations");

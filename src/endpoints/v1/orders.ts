@@ -6,10 +6,17 @@ import { insertOrder, syncOrderFromSquare } from "@/services/db/orders";
 import { bigintReplacer } from "@tessellatepos/sdk";
 import type { Money, Order } from "@tessellatepos/sdk";
 import { emitPaymentStatusEvent } from "@/services/websocket/events";
+import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 
-export const orderRouter: Router = express.Router();
+const orderRouter: Router = express.Router();
 
 const logger = new Logger();
+
+export const ordersv1Endpoint: ITessellateApiRouter = {
+    route_path: "/config/settings",
+    version: "v1",
+    router: orderRouter
+}
 
 orderRouter.post("/create", async (req, res) => {
     try {

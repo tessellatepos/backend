@@ -5,10 +5,17 @@ import { type Item } from "@tessellatepos/sdk";
 import { Logger } from "tslog";
 import { updateCatalogInCache } from "@/services/catalogSync";
 import { getParamValue } from "@/utils/expressHelpers";
+import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 
-export const itemRouter: Router = express.Router();
+const itemRouter: Router = express.Router();
 
 const logger = new Logger();
+
+export const itemsv1Endpoint: ITessellateApiRouter = {
+    route_path: "/config/settings",
+    version: "v1",
+    router: itemRouter
+}
 
 // itemRouter.get("/items/:itemId", async (req: Request, res: Response) => {});
 
