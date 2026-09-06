@@ -10,9 +10,10 @@ import cors from "cors";
 import * as http from "node:http";
 import { setupWebSocket } from "@/services/websocket/websocket";
 import { refreshIfNeeded } from "@/services/squareOauth";
-import { loadPlugins } from "./plugin/pluginManager";
-import { routes } from "./utils/registry/api/routes";
-import { TessellateApiRegistry } from "./utils/registry/api/apiRegistry";
+import { routes } from "@/utils/registry/api/routes";
+import { TessellateApiRegistry } from "@/utils/registry/api/apiRegistry";
+import { TessellatePluginRegistry } from "@/utils/registry/plugin/pluginRegistry";
+import { loadPlugins } from "@/plugin/lifecycle/lifecycleManager";
 
 const app = express();
 const corsOptions = {
@@ -26,9 +27,10 @@ const logger = new Logger();
 
 async function start() {
     try {
-        const plugins = await loadPlugins();
-        const apiRegistry = new TessellateApiRegistry(app);
-        logger.debug("Loaded plugins:", [...plugins.keys()]);
+        const pluginRegistry = new TessellatePluginRegistry();
+        await loadPlugins(pluginRegistry);
+        const apiRegistry = new TessellateApiRegistry(app, pluginRegistry.apiRegistry);
+        logger.debug("Loaded plugins:", [...pluginRegistry.getPlugins().keys()]);
 
 
         const redis = await getRedisClient(); // await the async function

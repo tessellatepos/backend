@@ -1,7 +1,6 @@
-import { PluginApiMountDefinition } from "@tessellatepos/plugin-sdk";
 import type { Express, RequestHandler } from "express";
 import { Logger } from "tslog";
-import { PluginApiRegistry } from "./pluginApiRegistry";
+import { TessellatePluginApiRegistry } from "@/utils/registry/api/pluginApiRegistry";
 
 const logger = new Logger();
 
@@ -13,21 +12,22 @@ export interface ITessellateApiRouter<R = RequestHandler>  {
 }
 
 export class TessellateApiRegistry {
-    protected routers: ITessellateApiRouter[]
-    protected pluginAPIMounts: Map<string, PluginApiMountDefinition>
-    protected pluginAPIRegistery: PluginApiRegistry
-    protected app: Express
+    protected routers: ITessellateApiRouter[];
+    protected pluginApiRegistry: TessellatePluginApiRegistry;
+    protected app: Express;
 
-    constructor(app: Express) {
+    constructor(app: Express, pluginApiRegistry: TessellatePluginApiRegistry) {
         this.app = app;
-        this.routers = []
-        this.pluginAPIMounts = new Map
-        this.pluginAPIRegistery = new PluginApiRegistry;
+        this.routers = [];
+        this.pluginApiRegistry = pluginApiRegistry;
     }
 
     public loadRoutes() {
         logger.debug("Loading Tessellate API Routes");
         this.mountAll();
+
+        logger.debug("Loading Plugin API dispatcher");
+        this.app.use("/plugins", this.pluginApiRegistry.dispatch);
     }
 
     private mountAll() {
