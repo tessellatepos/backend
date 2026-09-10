@@ -10,7 +10,12 @@ import type {
     Money,
 } from "@tessellatepos/sdk";
 import { configDotenv } from "dotenv";
-import type { CatalogProvider, PaymentProvider } from "../types";
+import type {
+    CatalogProvider,
+    PaymentProvider,
+    DevicePairingProvider,
+    DeviceCodePairing,
+} from "../types";
 import {
     getDecryptedAccessToken,
     getSquareEnvironment,

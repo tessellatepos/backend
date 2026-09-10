@@ -15,11 +15,11 @@ interface PluginMounts {
 export class Plugin {
     protected manifest: PluginManifest;
     protected permissions: PluginPermissionProvider;
-    private mounts: { [K in keyof PluginMounts]: PluginMounts[K][]} = {
+    private mounts: { [K in keyof PluginMounts]: PluginMounts[K][] } = {
         ui: [],
         api: [],
         database: [],
-    }
+    };
 
     constructor(
         manifest: PluginManifest,
@@ -29,7 +29,10 @@ export class Plugin {
         this.permissions = permissions;
     }
 
-    public register<K extends keyof PluginMounts>(kind: K, mount: PluginMounts[K]) {
+    public register<K extends keyof PluginMounts>(
+        kind: K,
+        mount: PluginMounts[K],
+    ) {
         this.mounts[kind].push(mount);
     }
 
@@ -40,5 +43,4 @@ export class Plugin {
     public getManifest(): PluginManifest {
         return this.manifest;
     }
-
 }

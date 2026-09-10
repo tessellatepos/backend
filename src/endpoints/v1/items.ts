@@ -12,10 +12,10 @@ const itemRouter: Router = express.Router();
 const logger = new Logger();
 
 export const itemsv1Endpoint: ITessellateApiRouter = {
-    route_path: "/config/settings",
+    route_path: "/items",
     version: "v1",
-    router: itemRouter
-}
+    router: itemRouter,
+};
 
 // itemRouter.get("/items/:itemId", async (req: Request, res: Response) => {});
 

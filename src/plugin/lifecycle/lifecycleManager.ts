@@ -3,7 +3,10 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { Logger } from "tslog";
 import { Plugin } from "@/plugin/plugin";
-import { getManifestList, grantedPermissions } from "@/plugin/lifecycle/manifest";
+import {
+    getManifestList,
+    grantedPermissions,
+} from "@/plugin/lifecycle/manifest";
 import { TessellatePluginRegistry } from "@/utils/registry/plugin/pluginRegistry";
 
 const logger = new Logger();

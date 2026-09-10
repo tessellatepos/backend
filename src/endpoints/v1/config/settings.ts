@@ -15,8 +15,8 @@ const logger = new Logger();
 export const configSettingsv1Endpoint: ITessellateApiRouter = {
     route_path: "/config/settings",
     version: "v1",
-    router: configSettingRouter
-}
+    router: configSettingRouter,
+};
 
 configSettingRouter.get("/", async (req: Request, res: Response) => {
     logger.info(`Received GET request for system configuration`);

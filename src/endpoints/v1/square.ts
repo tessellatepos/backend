@@ -22,8 +22,8 @@ const logger = new Logger();
 export const squarev1Endpoint: ITessellateApiRouter = {
     route_path: "/square",
     version: "v1",
-    router: squareRouter
-}
+    router: squareRouter,
+};
 
 squareRouter.get("/locations", async (req, res) => {
     logger.info("Received GET request for Square locations");

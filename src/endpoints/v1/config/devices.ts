@@ -21,8 +21,8 @@ const logger = new Logger();
 export const configDevicev1Endpoint: ITessellateApiRouter = {
     route_path: "/config/devices",
     version: "v1",
-    router: configDeviceRouter
-}
+    router: configDeviceRouter,
+};
 
 configDeviceRouter.get("/", async (req, res) => {
     logger.info("Received GET request for all device configurations");

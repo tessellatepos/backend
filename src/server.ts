@@ -29,9 +29,13 @@ async function start() {
     try {
         const pluginRegistry = new TessellatePluginRegistry();
         await loadPlugins(pluginRegistry);
-        const apiRegistry = new TessellateApiRegistry(app, pluginRegistry.apiRegistry);
-        logger.debug("Loaded plugins:", [...pluginRegistry.getPlugins().keys()]);
-
+        const apiRegistry = new TessellateApiRegistry(
+            app,
+            pluginRegistry.apiRegistry,
+        );
+        logger.debug("Loaded plugins:", [
+            ...pluginRegistry.getPlugins().keys(),
+        ]);
 
         const redis = await getRedisClient(); // await the async function
 
@@ -49,12 +53,17 @@ async function start() {
             logger.warn("Could not refresh the Square OAuth token:", err);
         }
 
-        // Initial catalog update, then keep it in sync on an hourly interval
-        await updateCatalogInCache();
+        // Initial catalog update, then keep it in sync on an hourly interval.
+        // Not fatal — the deployment may not be connected to Square yet.
+        try {
+            await updateCatalogInCache();
+        } catch (err) {
+            logger.warn("Could not sync catalog on startup:", err);
+        }
         startCatalogSyncInterval();
 
-        // register all the routes in routes.ts and load them all in. 
-        // This process should be the last thing before the server loads 
+        // register all the routes in routes.ts and load them all in.
+        // This process should be the last thing before the server loads
         // to ensure that plugin routes are loaded
         for (const route of routes) {
             apiRegistry.registerRouter(route);

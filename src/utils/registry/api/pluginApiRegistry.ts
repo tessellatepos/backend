@@ -26,7 +26,7 @@ export class TessellatePluginApiRegistry {
     }
 
     public unregister(pluginName: string) {
-        this.routes = this.routes.filter(r => r.pluginName !== pluginName);
+        this.routes = this.routes.filter((r) => r.pluginName !== pluginName);
     }
 
     public dispatch: RequestHandler = async (req, res, next) => {
@@ -38,7 +38,7 @@ export class TessellatePluginApiRegistry {
             const apiReq: PluginApiRequest = {
                 params: matched.params,
                 query: req.query as Record<string, string>,
-                body: req.body
+                body: req.body,
             };
             // const ctx = buildPluginServerContext(req); // db/hooks/session for this plugin
 

@@ -9,10 +9,7 @@ import type {
     Tender,
 } from "@tessellatepos/sdk";
 import { drizzleDB } from "@/services/db/postgres";
-import {
-    catalogItemVariationsTable,
-    ordersTable,
-} from "@/services/db/schema";
+import { catalogItemVariationsTable, ordersTable } from "@/services/db/schema";
 import { getCatalogByLocation } from "@/services/db/catalog";
 import { getOrderById, updateOrder } from "@/services/db/orders";
 import type { CatalogProvider, PaymentProvider } from "../types";

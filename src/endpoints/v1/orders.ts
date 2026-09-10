@@ -13,10 +13,10 @@ const orderRouter: Router = express.Router();
 const logger = new Logger();
 
 export const ordersv1Endpoint: ITessellateApiRouter = {
-    route_path: "/config/settings",
+    route_path: "/orders",
     version: "v1",
-    router: orderRouter
-}
+    router: orderRouter,
+};
 
 orderRouter.post("/create", async (req, res) => {
     try {
@@ -64,11 +64,11 @@ orderRouter.post("/:orderId/checkout", async (req, res) => {
         }
 
         const terminalDevice = await getPairedDeviceByType("TERMINAL");
-        const deviceId = terminalDevice?.device_hardware_id;
+        const deviceId = terminalDevice?.square_device_id;
         if (!deviceId) {
-            logger.error("No paired Terminal device is configured");
+            logger.error("No Square-paired Terminal device is configured");
             res.status(500).json({
-                message: "Terminal device is not configured",
+                message: "Terminal device is not paired with Square",
             });
             return;
         }
@@ -97,6 +97,22 @@ orderRouter.post("/:orderId/checkout", async (req, res) => {
         const status =
             await activeProvider.getTerminalCheckoutStatus?.(checkoutId);
 
+        if (status === "COMPLETED") {
+            const paidOrder = await activeProvider.fetchOrder(orderId);
+            if (paidOrder) {
+                await syncOrderFromSquare(paidOrder);
+            }
+            res.status(200)
+                .header("Content-Type", "application/json")
+                .send(
+                    JSON.stringify(
+                        { checkoutId, status, order: paidOrder },
+                        bigintReplacer,
+                    ),
+                );
+            return;
+        }
+
         res.status(200).json({ checkoutId, status });
     } catch (error) {
         logger.error(error);
@@ -116,10 +132,21 @@ orderRouter.get("/:orderId/checkout/:checkoutId", async (req, res) => {
         }
 
         if (status === "COMPLETED") {
-            const order = await activeProvider.fetchOrder(req.params.orderId);
-            if (order) {
-                await syncOrderFromSquare(order);
+            const paidOrder = await activeProvider.fetchOrder(
+                req.params.orderId,
+            );
+            if (paidOrder) {
+                await syncOrderFromSquare(paidOrder);
             }
+            res.status(200)
+                .header("Content-Type", "application/json")
+                .send(
+                    JSON.stringify(
+                        { checkoutId, status, order: paidOrder },
+                        bigintReplacer,
+                    ),
+                );
+            return;
         }
 
         res.status(200).json({ checkoutId, status });

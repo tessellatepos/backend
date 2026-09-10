@@ -8,8 +8,8 @@ export const baseEndpoint: ITessellateApiRouter = {
     route_path: "/",
     override_default: true,
     version: "v1",
-    router: baseRouter
-}
+    router: baseRouter,
+};
 
 baseRouter.get("/", (req, res) => {
     res.json({ message: "Welcome to the Tessellate POS API" });

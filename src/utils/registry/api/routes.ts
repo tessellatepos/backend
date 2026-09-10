@@ -1,7 +1,7 @@
 import { baseEndpoint } from "@/endpoints/base";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
-import { configDevicev1Endpoint } from "@/endpoints/v1/config/devices"
-import { configSettingsv1Endpoint } from "@/endpoints/v1/config/settings"
+import { configDevicev1Endpoint } from "@/endpoints/v1/config/devices";
+import { configSettingsv1Endpoint } from "@/endpoints/v1/config/settings";
 import { itemsv1Endpoint } from "@/endpoints/v1/items";
 import { ordersv1Endpoint } from "@/endpoints/v1/orders";
 import { squarev1Endpoint } from "@/endpoints/v1/square";
@@ -14,5 +14,5 @@ export const routes: ITessellateApiRouter[] = [
     configSettingsv1Endpoint,
     itemsv1Endpoint,
     ordersv1Endpoint,
-    squarev1Endpoint
+    squarev1Endpoint,
 ];

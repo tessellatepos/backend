@@ -4,10 +4,10 @@ import { TessellatePluginApiRegistry } from "@/utils/registry/api/pluginApiRegis
 
 const logger = new Logger();
 
-export interface ITessellateApiRouter<R = RequestHandler>  {
+export interface ITessellateApiRouter<R = RequestHandler> {
     route_path: string;
     override_default?: boolean;
-    version: string
+    version: string;
     router: R;
 }
 
@@ -33,11 +33,15 @@ export class TessellateApiRegistry {
     private mountAll() {
         this.routers.forEach((r) => {
             if (r.override_default) {
-                logger.debug(`Loading API Router(overriden path): ${r.route_path}@${r.version}`)
+                logger.debug(
+                    `Loading API Router(overriden path): ${r.route_path}@${r.version}`,
+                );
                 this.app.use(`${r.route_path}`, r.router);
             } else {
-                logger.debug(`Loading API Router: ${r.route_path}@${r.version}`);
-                this.app.use(`/api/${r.version}/${r.route_path}`, r.router);
+                logger.debug(
+                    `Loading API Router: ${r.route_path}@${r.version}`,
+                );
+                this.app.use(`/api/${r.version}${r.route_path}`, r.router);
             }
         });
     }
