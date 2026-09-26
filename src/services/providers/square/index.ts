@@ -4,6 +4,13 @@ import type {
     ItemVariation,
     ItemCategory,
     ItemVariationLocationOverrides,
+    Order,
+    Money,
+    CartItem as CartItemType,
+} from "@tessellatepos/sdk";
+import { toBigIntAmount } from "@tessellatepos/sdk";
+import { configDotenv } from "dotenv";
+import type {
     squareHelperCategory,
     squareHelperItemVariation,
 } from "./helpers";
@@ -57,6 +64,31 @@ function mapPricingType(
     if (pricingType === "FIXED_PRICING") return "FIXED";
     if (pricingType === "VARIABLE_PRICING") return "VARIABLE";
     return undefined;
+}
+
+/**
+ * Maps a Square order's line items (which carry pricing under
+ * `basePriceMoney`) back into the app's `CartItem` shape (`priceMoney`), so
+ * that order responses can be rendered by the same components as the
+ * client-side cart.
+ * @param lineItems the line items returned by the Square Orders API (Square
+ * types these as nullable — `OrderLineItem[] | null`)
+ * @returns the app's CartItem representation of those line items
+ */
+function mapSquareOrderLineItems(
+    lineItems: OrderLineItem[] | null | undefined,
+): CartItemType[] | undefined {
+    return lineItems?.map((li) => ({
+        itemId: li.catalogObjectId,
+        name: li.name ?? li.variationName,
+        quantity: li.quantity ? BigInt(li.quantity) : undefined,
+        priceMoney: li.basePriceMoney
+            ? {
+                  amount: toBigIntAmount(li.basePriceMoney.amount ?? 0),
+                  currency: li.basePriceMoney.currency as Money["currency"],
+              }
+            : undefined,
+    }));
 }
 
 /**
@@ -210,6 +242,12 @@ async function createOrder(order: Order): Promise<Order | undefined | null> {
                     quantity: li.quantity!.toString(),
                     catalogObjectId: li.itemId,
                 };
+                if (li.pricingType === "VARIABLE" && li.priceMoney) {
+                    lineItem.basePriceMoney = {
+                        amount: toBigIntAmount(li.priceMoney.amount),
+                        currency: li.priceMoney.currency,
+                    };
+                }
                 return lineItem;
             }),
             referenceId: order.referenceId,
@@ -217,8 +255,11 @@ async function createOrder(order: Order): Promise<Order | undefined | null> {
         },
     });
 
-    if (response) {
-        return response.order as Order;
+    if (response?.order) {
+        return {
+            ...response.order,
+            lineItems: mapSquareOrderLineItems(response.order.lineItems),
+        } as Order;
     }
 }
 
@@ -234,8 +275,11 @@ async function fetchOrder(orderId: string): Promise<Order | undefined | null> {
 
     const response = await client.orders.get({ orderId });
 
-    if (response) {
-        return response.order as Order;
+    if (response?.order) {
+        return {
+            ...response.order,
+            lineItems: mapSquareOrderLineItems(response.order.lineItems),
+        } as Order;
     }
 }
 
