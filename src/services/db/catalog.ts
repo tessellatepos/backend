@@ -77,7 +77,7 @@ async function upsertCategory(category: ItemCategory, db: TDrizzleDB) {
 
 /**
  * Upserts a single variation. Note: ItemVariation.itemId is actually the
- * variation's own catalog id (see square.ts fetchItems) — the item it
+ * variation's own catalog id (see providers/square/index.ts fetchCatalog) — the item it
  * belongs to comes from ItemVariation.parent.id instead.
  * @param itemId the id of the parent item this variation belongs to
  * @param variation the variation to upsert
