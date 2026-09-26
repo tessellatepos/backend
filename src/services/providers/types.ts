@@ -42,3 +42,24 @@ export interface PaymentProvider {
         paymentId: string,
     ): Promise<boolean>;
 }
+
+export interface DeviceCodePairing {
+    id: string;
+    code: string;
+    status: string;
+    pairBy?: string;
+    deviceId?: string;
+}
+
+/**
+ * Pairs physical hardware (e.g. a Square Terminal) to this merchant account.
+ * Optional — providers without a hardware device-registration concept (an
+ * in-house cash-only provider) omit it.
+ */
+export interface DevicePairingProvider {
+    createDeviceCode?(
+        locationId: string,
+        name: string,
+    ): Promise<DeviceCodePairing | null>;
+    getDeviceCode?(id: string): Promise<DeviceCodePairing | null>;
+}

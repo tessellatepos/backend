@@ -58,6 +58,13 @@ export async function getPairedDeviceByType(
     deviceType: DeviceType,
     db: TDrizzleDB = drizzleDB,
 ) {
+    // TERMINAL devices pair through Square's own Device Code flow (square_device_id);
+    // MOBILE_READER devices pair through our OTP flow (device_hardware_id).
+    const pairingIdentifierColumn =
+        deviceType === "TERMINAL"
+            ? configDevicesTable.square_device_id
+            : configDevicesTable.device_hardware_id;
+
     const deviceConfig = await db
         .select()
         .from(configDevicesTable)
@@ -65,7 +72,7 @@ export async function getPairedDeviceByType(
             and(
                 eq(configDevicesTable.device_type, deviceType),
                 isNotNull(configDevicesTable.paired_at),
-                isNotNull(configDevicesTable.device_hardware_id),
+                isNotNull(pairingIdentifierColumn),
             ),
         )
         .limit(1);
