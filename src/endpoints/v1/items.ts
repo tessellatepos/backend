@@ -1,6 +1,7 @@
 import express from "express";
 import { Request, Response, Router } from "express";
 import { getItemsByLocationID } from "@/services/redis";
+import { getConfigDeviceByID } from "@/services/db/configDevice";
 import { type Item } from "@tessellatepos/sdk";
 import { Logger } from "tslog";
 import { updateCatalogInCache } from "@/services/catalogSync";
@@ -30,6 +31,28 @@ itemRouter.get(
             });
             return;
         }
+
+        const deviceConfig = await getConfigDeviceByID(deviceId);
+        if (!deviceConfig) {
+            res.status(404).json({
+                message: "Device configuration not found",
+            });
+            return;
+        }
+
+        const locationId = deviceConfig.square_location;
+        if (!locationId) {
+            res.status(400).json({
+                message: "Device has no associated location",
+            });
+            return;
+        }
+
+        let items: Item[] = [];
+        const fetched = await getItemsByLocationID(locationId);
+        if (Array.isArray(fetched)) items = fetched;
+
+        res.json(items);
     },
 );
 
@@ -64,10 +87,6 @@ itemRouter.get(
 
         if (!locationId) {
             logger.warn("No locationID provided, error fetching items");
-        } else if (Array.isArray(locationId)) {
-            for (const id in locationId) {
-                items = items.concat(await getItemsByLocationID(id));
-            }
         } else {
             items = items.concat(await getItemsByLocationID(locationId));
         }

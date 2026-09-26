@@ -29,6 +29,6 @@ configSettingRouter.post("/", async (req: Request, res: Response) => {
         `Received POST request for system configuration with body: ${JSON.stringify(req.body)}`,
     );
     const updatedConfig = req.body as IConfigSystem;
-    updateConfigSystem(updatedConfig);
-    res.json(updatedConfig);
+    const persistedConfig = await updateConfigSystem(updatedConfig);
+    res.json(persistedConfig);
 });

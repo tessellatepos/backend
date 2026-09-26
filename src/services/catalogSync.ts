@@ -32,5 +32,9 @@ export async function updateCatalogInCache() {
 
 /** Starts the hourly catalog sync after the initial one. */
 export function startCatalogSyncInterval() {
-    setInterval(() => void updateCatalogInCache(), CATALOG_SYNC_INTERVAL_MS);
+    setInterval(() => {
+        void updateCatalogInCache().catch((err) => {
+            logger.error("Catalog sync interval error:", err);
+        });
+    }, CATALOG_SYNC_INTERVAL_MS);
 }

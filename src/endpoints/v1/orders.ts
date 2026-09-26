@@ -34,12 +34,19 @@ orderRouter.post("/create", async (req, res) => {
 
         logger.debug("orderDetails created", orderDetails);
 
-        if (!orderDetails) {
-            res.status(400).json({ message: "Missing order details" });
+        if (!orderDetails || typeof orderDetails !== "object") {
+            res.status(400).json({
+                message: "Missing or invalid order details",
+            });
             return;
         }
 
-        orderDetails.referenceId = crypto.randomUUID();
+        if (!Array.isArray(orderDetails.lineItems)) {
+            res.status(400).json({
+                message: "orderDetails.lineItems must be an array",
+            });
+            return;
+        }
 
         // HOOK: beforeOrderCreate — plugins can modify or block the order
         const hookResult = await getPluginRegistry(req).runHook(
@@ -74,8 +81,8 @@ orderRouter.post("/create", async (req, res) => {
             res.status(500).json({ message: "Failed to create order" });
         }
     } catch (error) {
-        logger.error(error);
-        res.status(500).json({ message: "Failed to create order", error });
+        logger.error("Failed to create order", error);
+        res.status(500).json({ message: "Failed to create order" });
     }
 });
 
@@ -139,6 +146,15 @@ orderRouter.post("/:orderId/checkout", async (req, res) => {
             if (paidOrder) {
                 await syncOrderFromSquare(paidOrder);
             }
+            emitPaymentStatusEvent({
+                type: "payment_status",
+                payload: {
+                    orderId,
+                    status: "COMPLETED",
+                    paymentMethod: "TERMINAL",
+                },
+            });
+
             // EVENT: paymentCompleted — plugins react (non-blocking)
             getPluginRegistry(req).emit(
                 events.paymentCompleted,
@@ -159,8 +175,8 @@ orderRouter.post("/:orderId/checkout", async (req, res) => {
 
         res.status(200).json({ checkoutId, status });
     } catch (error) {
-        logger.error(error);
-        res.status(500).json({ message: "Failed to checkout order", error });
+        logger.error("Failed to checkout order", error);
+        res.status(500).json({ message: "Failed to checkout order" });
     }
 });
 
@@ -182,6 +198,15 @@ orderRouter.get("/:orderId/checkout/:checkoutId", async (req, res) => {
             if (paidOrder) {
                 await syncOrderFromSquare(paidOrder);
             }
+            emitPaymentStatusEvent({
+                type: "payment_status",
+                payload: {
+                    orderId: req.params.orderId,
+                    status: "COMPLETED",
+                    paymentMethod: "TERMINAL",
+                },
+            });
+
             // EVENT: paymentCompleted — plugins react (non-blocking)
             getPluginRegistry(req).emit(
                 events.paymentCompleted,
@@ -202,10 +227,9 @@ orderRouter.get("/:orderId/checkout/:checkoutId", async (req, res) => {
 
         res.status(200).json({ checkoutId, status });
     } catch (error) {
-        logger.error(error);
+        logger.error("Failed to get checkout status", error);
         res.status(500).json({
             message: "Failed to get checkout status",
-            error,
         });
     }
 });
@@ -250,7 +274,11 @@ orderRouter.post("/:orderId/pay-cash", async (req, res) => {
             return;
         }
 
-        await activeProvider.payCash(orderId, tenderedMoney, order.totalMoney);
+        const changeDue = await activeProvider.payCash(
+            orderId,
+            tenderedMoney,
+            order.totalMoney,
+        );
 
         const paidOrder = await activeProvider.fetchOrder(orderId);
         if (!paidOrder) {
@@ -266,10 +294,12 @@ orderRouter.post("/:orderId/pay-cash", async (req, res) => {
 
         res.status(200)
             .header("Content-Type", "application/json")
-            .send(JSON.stringify(paidOrder, bigintReplacer));
+            .send(
+                JSON.stringify({ order: paidOrder, changeDue }, bigintReplacer),
+            );
     } catch (error) {
-        logger.error(error);
-        res.status(500).json({ message: "Failed to pay with cash", error });
+        logger.error("Failed to pay with cash", error);
+        res.status(500).json({ message: "Failed to pay with cash" });
     }
 });
 
@@ -336,10 +366,9 @@ orderRouter.post("/:orderId/pay-mobile-reader", async (req, res) => {
             .header("Content-Type", "application/json")
             .send(JSON.stringify(order, bigintReplacer));
     } catch (error) {
-        logger.error(error);
+        logger.error("Failed to confirm mobile reader payment", error);
         res.status(500).json({
             message: "Failed to confirm mobile reader payment",
-            error,
         });
     }
 });
