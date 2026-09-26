@@ -22,7 +22,7 @@ export const configDevicesTable = pgTable("tessellate-devices-config", {
     created_at: timestamp("entry_created_at", {
         withTimezone: true,
     }).defaultNow(),
-    paring_code: varchar("paring_code", { length: 8 }),
+    pairing_code: varchar("paring_code", { length: 8 }),
     code_created_at: timestamp("code_created_at", {
         withTimezone: true,
     }).defaultNow(),

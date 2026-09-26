@@ -11,7 +11,7 @@ export async function createConfigDevice(db: TDrizzleDB = drizzleDB) {
     const deviceConfig: typeof configDevicesTable.$inferInsert = {
         id: generateDeviceNanoID(),
         created_at: new Date(),
-        paring_code: generateParingCode(),
+        pairing_code: generatePairingCode(),
         code_created_at: new Date(),
         paired_at: null,
         square_location: null,
@@ -31,13 +31,13 @@ export async function getAllConfigDevices(db: TDrizzleDB = drizzleDB) {
 }
 
 export async function getConfigDeviceByPairingCode(
-    paring_code: string,
+    pairing_code: string,
     db: TDrizzleDB = drizzleDB,
 ) {
     const deviceConfig = await db
         .select()
         .from(configDevicesTable)
-        .where(eq(configDevicesTable.paring_code, paring_code))
+        .where(eq(configDevicesTable.pairing_code, pairing_code))
         .limit(1);
     return deviceConfig[0] || null;
 }
@@ -97,7 +97,7 @@ function generateDeviceNanoID() {
     return nanoid();
 }
 
-export function generateParingCode() {
+export function generatePairingCode() {
     const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
     const nanoid = customAlphabet(alphabet, 8);
     return nanoid();

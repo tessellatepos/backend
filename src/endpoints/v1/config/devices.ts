@@ -4,7 +4,7 @@ import { Logger } from "tslog";
 import {
     createConfigDevice,
     getConfigDeviceByPairingCode,
-    generateParingCode,
+    generatePairingCode,
     updateConfigDevice,
     deleteConfigDevice,
     getConfigDeviceByID,
@@ -57,7 +57,7 @@ configDeviceRouter.get(
             const newConfig = {
                 id: config.id,
                 created_at: config.created_at,
-                paring_code: generateParingCode(),
+                pairing_code: generatePairingCode(),
                 code_created_at: new Date(),
                 paired_at: null,
                 square_location: config.square_location,
@@ -134,7 +134,7 @@ configDeviceRouter.put(
             const newConfig = {
                 id: dbConfig.id,
                 created_at: dbConfig.created_at,
-                paring_code: null,
+                pairing_code: null,
                 code_created_at: null,
                 paired_at: new Date(),
                 square_location: dbConfig.square_location,
