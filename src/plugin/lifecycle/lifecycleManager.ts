@@ -27,7 +27,7 @@ export async function loadPlugins(registry: TessellatePluginRegistry) {
             const plugin = new Plugin(manifest, grantedPermissions(manifest));
             await module.default(plugin);
 
-            registry.loadPlugin(manifest.name, plugin);
+            await registry.loadPlugin(manifest.name, plugin);
             logger.info(
                 `Activated plugin "${manifest.name}"@${manifest.version}`,
             );

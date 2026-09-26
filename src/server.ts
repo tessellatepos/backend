@@ -37,6 +37,11 @@ async function start() {
             ...pluginRegistry.getPlugins().keys(),
         ]);
 
+        // Attach the plugin registry to app.locals so endpoint handlers
+        // (e.g. orders.ts) can access it for hook dispatch and event emission
+        // without a factory or module-level mutable state.
+        app.locals.pluginRegistry = pluginRegistry;
+
         const redis = await getRedisClient(); // await the async function
 
         if (!redis) {

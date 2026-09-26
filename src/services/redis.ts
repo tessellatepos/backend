@@ -125,6 +125,16 @@ export const getItemByItemID = async (key: string): Promise<Item | null> => {
 };
 
 /**
+ * Looks up a single catalog item by its id from the Redis cache populated
+ * by setItemsByLocationID.
+ * @param itemId the id of the item to retrieve.
+ * @returns the item, or null if it isn't cached.
+ */
+export const getItemById = async (itemId: string): Promise<Item | null> => {
+    return getItemByItemID(ITEM_KEY(itemId));
+};
+
+/**
  * Stores items and indexes them by parent item id for locations when any variation applies to that location.
  * Behavior:
  * - Stores the full item under `square:item:{itemId}` (JSON)

@@ -4,9 +4,11 @@ import { activeProvider } from "@/services/providers";
 import { getPairedDeviceByType } from "@/services/db/configDevice";
 import { insertOrder, syncOrderFromSquare } from "@/services/db/orders";
 import { bigintReplacer } from "@tessellatepos/sdk";
-import type { Money, Order } from "@tessellatepos/sdk";
+import type { Money, Order, TenderType } from "@tessellatepos/sdk";
+import { hooks, events } from "@tessellatepos/plugin-sdk/server";
 import { emitPaymentStatusEvent } from "@/services/websocket/events";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
+import type { TessellatePluginRegistry } from "@/utils/registry/plugin/pluginRegistry";
 
 const orderRouter: Router = express.Router();
 
@@ -17,6 +19,14 @@ export const ordersv1Endpoint: ITessellateApiRouter = {
     version: "v1",
     router: orderRouter,
 };
+
+// The plugin registry is attached to app.locals in server.ts after plugins
+// are loaded. Each handler reads it from the request so we don't need a
+// factory or module-level mutable state.
+function getPluginRegistry(req: express.Request): TessellatePluginRegistry {
+    return (req.app.locals as { pluginRegistry: TessellatePluginRegistry })
+        .pluginRegistry;
+}
 
 orderRouter.post("/create", async (req, res) => {
     try {
@@ -31,11 +41,28 @@ orderRouter.post("/create", async (req, res) => {
 
         orderDetails.referenceId = crypto.randomUUID();
 
-        const order = await activeProvider.createOrder(orderDetails);
+        // HOOK: beforeOrderCreate — plugins can modify or block the order
+        const hookResult = await getPluginRegistry(req).runHook(
+            hooks.beforeOrderCreate,
+            orderDetails,
+        );
+        if (!hookResult.ok) {
+            res.status(400).json({ message: hookResult.reason });
+            return;
+        }
+        const modifiedOrderDetails = hookResult.value;
+
+        modifiedOrderDetails.referenceId = crypto.randomUUID();
+
+        const order = await activeProvider.createOrder(modifiedOrderDetails);
 
         if (order !== null && order !== undefined) {
             logger.debug("Created order:", order.referenceId);
             await insertOrder(order);
+
+            // EVENT: orderCreated — plugins react (non-blocking)
+            getPluginRegistry(req).emit(events.orderCreated, order);
+
             res.status(200)
                 .header("Content-Type", "application/json")
                 .send(JSON.stringify(order, bigintReplacer));
@@ -81,6 +108,16 @@ orderRouter.post("/:orderId/checkout", async (req, res) => {
             return;
         }
 
+        // HOOK: beforeCheckout — plugins can block checkout (gate)
+        const checkoutResult = await getPluginRegistry(req).runHook(
+            hooks.beforeCheckout,
+            { orderId, amount: order.totalMoney },
+        );
+        if (!checkoutResult.ok) {
+            res.status(400).json({ message: checkoutResult.reason });
+            return;
+        }
+
         const checkoutId = await activeProvider.createTerminalCheckout(
             orderId,
             order.totalMoney,
@@ -102,6 +139,13 @@ orderRouter.post("/:orderId/checkout", async (req, res) => {
             if (paidOrder) {
                 await syncOrderFromSquare(paidOrder);
             }
+            // EVENT: paymentCompleted — plugins react (non-blocking)
+            getPluginRegistry(req).emit(
+                events.paymentCompleted,
+                paidOrder,
+                "CARD",
+            );
+
             res.status(200)
                 .header("Content-Type", "application/json")
                 .send(
@@ -138,6 +182,13 @@ orderRouter.get("/:orderId/checkout/:checkoutId", async (req, res) => {
             if (paidOrder) {
                 await syncOrderFromSquare(paidOrder);
             }
+            // EVENT: paymentCompleted — plugins react (non-blocking)
+            getPluginRegistry(req).emit(
+                events.paymentCompleted,
+                paidOrder,
+                "CARD",
+            );
+
             res.status(200)
                 .header("Content-Type", "application/json")
                 .send(
@@ -177,6 +228,16 @@ orderRouter.post("/:orderId/pay-cash", async (req, res) => {
             return;
         }
 
+        // HOOK: beforePayment — plugins can block payment (gate)
+        const payResult = await getPluginRegistry(req).runHook(
+            hooks.beforePayment,
+            { orderId, method: "CASH" as TenderType },
+        );
+        if (!payResult.ok) {
+            res.status(400).json({ message: payResult.reason });
+            return;
+        }
+
         const tenderedMoney: Money = {
             amount: BigInt(amountTendered),
             currency: order.totalMoney.currency,
@@ -199,6 +260,9 @@ orderRouter.post("/:orderId/pay-cash", async (req, res) => {
             return;
         }
         await syncOrderFromSquare(paidOrder);
+
+        // EVENT: paymentCompleted — plugins react (non-blocking)
+        getPluginRegistry(req).emit(events.paymentCompleted, paidOrder, "CASH");
 
         res.status(200)
             .header("Content-Type", "application/json")
@@ -224,6 +288,16 @@ orderRouter.post("/:orderId/pay-mobile-reader", async (req, res) => {
                 message:
                     "Mobile reader payment is not supported by this provider",
             });
+            return;
+        }
+
+        // HOOK: beforePayment — plugins can block payment (gate)
+        const payResult = await getPluginRegistry(req).runHook(
+            hooks.beforePayment,
+            { orderId, method: "MOBILE_READER" as TenderType },
+        );
+        if (!payResult.ok) {
+            res.status(400).json({ message: payResult.reason });
             return;
         }
 
@@ -254,6 +328,9 @@ orderRouter.post("/:orderId/pay-mobile-reader", async (req, res) => {
                 paymentId,
             },
         });
+
+        // EVENT: paymentCompleted — plugins react (non-blocking)
+        getPluginRegistry(req).emit(events.paymentCompleted, order, "CARD");
 
         res.status(200)
             .header("Content-Type", "application/json")

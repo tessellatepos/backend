@@ -4,6 +4,7 @@ import { configDevicev1Endpoint } from "@/endpoints/v1/config/devices";
 import { configSettingsv1Endpoint } from "@/endpoints/v1/config/settings";
 import { itemsv1Endpoint } from "@/endpoints/v1/items";
 import { ordersv1Endpoint } from "@/endpoints/v1/orders";
+import { pluginsv1Endpoint } from "@/endpoints/v1/plugins";
 import { squarev1Endpoint } from "@/endpoints/v1/square";
 import { authv1Endpoint } from "@/endpoints/v1/auth";
 
@@ -14,5 +15,6 @@ export const routes: ITessellateApiRouter[] = [
     configSettingsv1Endpoint,
     itemsv1Endpoint,
     ordersv1Endpoint,
+    pluginsv1Endpoint,
     squarev1Endpoint,
 ];
