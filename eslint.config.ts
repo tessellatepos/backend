@@ -6,6 +6,9 @@ import { defineConfig } from "eslint/config";
 
 export default defineConfig([
     {
+        ignores: ["dist/**", "drizzle/**"],
+    },
+    {
         files: ["**/*.{ts,mts,cts,tsx}"],
         plugins: {
             "@typescript-eslint": tseslint.plugin,
@@ -19,7 +22,7 @@ export default defineConfig([
             parserOptions: {
                 ecmaVersion: "latest",
             },
-            globals: globals.browser,
+            globals: globals.node,
         },
     },
 ]);

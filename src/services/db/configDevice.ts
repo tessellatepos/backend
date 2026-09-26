@@ -20,8 +20,6 @@ export async function createConfigDevice(db: TDrizzleDB = drizzleDB) {
         device_type: null,
     };
 
-    console.log(deviceConfig);
-    console.log("Creating config device");
     await db.insert(configDevicesTable).values(deviceConfig);
     return deviceConfig;
 }
@@ -94,7 +92,6 @@ export async function deleteConfigDevice(
     id: string,
     db: TDrizzleDB = drizzleDB,
 ) {
-    console.log("Deleting config device with id:", id);
     await db.delete(configDevicesTable).where(eq(configDevicesTable.id, id));
 }
 

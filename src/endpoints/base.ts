@@ -1,5 +1,4 @@
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
-import { overwrite } from "better-auth";
 import express, { Router } from "express";
 
 const baseRouter: Router = express.Router();

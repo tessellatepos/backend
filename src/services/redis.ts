@@ -52,7 +52,6 @@ export async function getRedisClient(): Promise<
         url: process.env.REDIS_URL,
         // password: process.env.REDIS_PASSWORD,
         socket: {
-            // @ts-expect-error, supposed to be a number, trust
             keepAlive: 5000,
         },
     });

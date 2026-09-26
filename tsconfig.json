@@ -11,9 +11,8 @@
         "rootDir": "src",
         "strict": true,
         "skipLibCheck": true,
-        "baseUrl": ".",
         "paths": {
-            "@/*": ["src/*"]
+            "@/*": ["./src/*"]
         }
     },
     "include": ["src", "*/**.ts", "*/**/*.tsx", "*.ts"],

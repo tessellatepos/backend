@@ -2,7 +2,7 @@ import { auth } from "@/services/auth";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 import { toNodeHandler } from "better-auth/node";
 import express from "express";
-import { Request, Response, Router } from "express";
+import { Router } from "express";
 
 const authRouter: Router = express.Router();
 
