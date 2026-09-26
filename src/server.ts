@@ -1,6 +1,6 @@
 import express from "express";
 import { getRedisClient } from "@/services/redis";
-import { runMigrations } from "@/services/db/postgres";
+import { pool, runMigrations } from "@/services/db/postgres";
 import {
     startCatalogSyncInterval,
     updateCatalogInCache,
@@ -82,6 +82,24 @@ async function start() {
         httpServer.listen(port, () => {
             logger.info(`Server listening on ${port}`);
         });
+
+        let shuttingDown = false;
+        const shutdown = async (signal: NodeJS.Signals) => {
+            if (shuttingDown) return;
+            shuttingDown = true;
+            logger.info(`Received ${signal}, shutting down...`);
+
+            await new Promise<void>((resolve) =>
+                httpServer.close(() => resolve()),
+            );
+
+            await Promise.allSettled([pool.end(), redis.quit()]);
+
+            process.exit(0);
+        };
+
+        process.on("SIGINT", (signal) => void shutdown(signal));
+        process.on("SIGTERM", (signal) => void shutdown(signal));
     } catch (err) {
         logger.error("Startup error:", err);
         process.exit(1);
