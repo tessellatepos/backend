@@ -67,6 +67,9 @@ configDeviceRouter.get(
             };
             await updateConfigDevice(config.id, newConfig);
             res.json(newConfig);
+        } else {
+            res.status(404).json({ message: "Pairing code not found" });
+            return;
         }
     },
 );
@@ -87,7 +90,7 @@ configDeviceRouter.delete(
             `Received DELETE request for pairing device with paring code: ${deviceId}`,
         );
         await deleteConfigDevice(deviceId);
-        const checkDeleteDevice = await getConfigDeviceByPairingCode(deviceId);
+        const checkDeleteDevice = await getConfigDeviceByID(deviceId);
 
         if (!checkDeleteDevice) {
             res.status(200).json({
@@ -178,7 +181,7 @@ configDeviceRouter.post("/:deviceId", async (req: Request, res: Response) => {
         `Received POST request for device ID: ${deviceId} with body: ${JSON.stringify(req.body)}`,
     );
     const updatedConfig = req.body as IConfigDevice;
-    await updateConfigDevice(updatedConfig.id, updatedConfig);
+    await updateConfigDevice(deviceId, updatedConfig);
     res.json(updatedConfig);
 });
 
@@ -198,6 +201,7 @@ configDeviceRouter.delete("/:deviceId", async (req: Request, res: Response) => {
         res.status(404).json({
             message: "Device configuration does not exist.",
         });
+        return;
     } else {
         await deleteConfigDevice(deviceId);
         res.status(200).json({
