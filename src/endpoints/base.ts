@@ -1,6 +1,14 @@
+import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 import express, { Router } from "express";
 
-export const baseRouter: Router = express.Router();
+const baseRouter: Router = express.Router();
+
+export const baseEndpoint: ITessellateApiRouter = {
+    route_path: "/",
+    override_default: true,
+    version: "v1",
+    router: baseRouter,
+};
 
 baseRouter.get("/", (req, res) => {
     res.json({ message: "Welcome to the Tessellate POS API" });

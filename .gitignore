@@ -37,3 +37,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 
+
+# lockfiles are managed at the workspace root (pnpm-lock.yaml)
+/package-lock.json
+
+# plugin client bundles are build output (see plugin/)
+plugins/*/dist/

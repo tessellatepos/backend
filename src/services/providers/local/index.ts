@@ -1,5 +1,5 @@
-import { eq } from "drizzle-orm";
-import { parseMoney, stripBigints } from "@tessellatepos/sdk";
+import { and, eq } from "drizzle-orm";
+import { CurrencyCode, parseMoney, stripBigints } from "@tessellatepos/sdk";
 import type {
     CartItem,
     Discount,
@@ -9,12 +9,9 @@ import type {
     Tender,
 } from "@tessellatepos/sdk";
 import { drizzleDB } from "@/services/db/postgres";
-import {
-    catalogItemVariationsTable,
-    ordersTable,
-} from "@/services/db/schema";
+import { catalogItemVariationsTable, ordersTable } from "@/services/db/schema";
 import { getCatalogByLocation } from "@/services/db/catalog";
-import { getOrderById, updateOrder } from "@/services/db/orders";
+import { getOrderById } from "@/services/db/orders";
 import type { CatalogProvider, PaymentProvider } from "../types";
 
 /**
@@ -45,36 +42,56 @@ function rowToOrder(row: typeof ordersTable.$inferSelect): Order {
 
 /**
  * Marks an order paid with a card tender for its full total and returns
- * whether it succeeded. Shared by createTerminalCheckout and
- * confirmMobileReaderPayment, since neither talks to real hardware here —
- * both just record a completed card tender immediately.
+ * whether it succeeded. Uses optimistic locking via the `version` column
+ * to prevent lost updates when concurrent payments race on the same order.
+ * Shared by createTerminalCheckout and confirmMobileReaderPayment.
  * @param orderId the order to mark paid
  * @returns true if the order was found and marked paid
  */
 async function markOrderPaidWithCard(orderId: string): Promise<boolean> {
-    const row = await getOrderById(orderId);
-    if (!row) return false;
+    return drizzleDB.transaction(async (tx) => {
+        const row = await getOrderById(orderId, tx);
+        if (!row) return false;
 
-    const orderAmount = parseMoney(row.totalMoney);
-    if (!orderAmount?.amount) return false;
+        const orderAmount = parseMoney(row.totalMoney);
+        if (!orderAmount?.amount) return false;
 
-    const tender: Tender = {
-        id: crypto.randomUUID(),
-        locationId: row.locationId,
-        transactionId: crypto.randomUUID(),
-        type: "CARD",
-        amountMoney: orderAmount,
-    };
+        const tender: Tender = {
+            id: crypto.randomUUID(),
+            locationId: row.locationId,
+            transactionId: crypto.randomUUID(),
+            type: "CARD",
+            amountMoney: orderAmount,
+        };
 
-    await updateOrder(orderId, {
-        state: "COMPLETED",
-        tenders: stripBigints([
-            ...((row.tenders as Tender[] | null) ?? []),
-            tender,
-        ]),
+        const currentVersion = row.version ?? 0;
+        const result = await tx
+            .update(ordersTable)
+            .set({
+                state: "COMPLETED",
+                tenders: stripBigints([
+                    ...((row.tenders as Tender[] | null) ?? []),
+                    tender,
+                ]),
+                version: currentVersion + 1,
+                updatedAt: new Date(),
+            })
+            .where(
+                and(
+                    eq(ordersTable.referenceId, orderId),
+                    eq(ordersTable.version, currentVersion),
+                ),
+            )
+            .returning({ id: ordersTable.id });
+
+        if (result.length === 0) {
+            throw new Error(
+                "Concurrent modification detected — order was updated by another payment",
+            );
+        }
+
+        return true;
     });
-
-    return true;
 }
 
 /**
@@ -101,7 +118,7 @@ async function createOrder(order: Order): Promise<Order | undefined | null> {
     }
 
     let totalAmount = 0n;
-    let currency = "CAD";
+    let currency: CurrencyCode = CurrencyCode.CAD;
 
     for (const lineItem of order.lineItems) {
         const quantity = BigInt(lineItem.quantity ?? 1n);
@@ -151,6 +168,7 @@ async function fetchOrder(orderId: string): Promise<Order | undefined | null> {
 
 /**
  * Marks an order paid with cash and returns the change due.
+ * Uses optimistic locking via the `version` column to prevent lost updates.
  * @param orderId the order to pay
  * @param amountTendered the cash amount the customer handed over
  * @param orderAmount the order's total
@@ -166,34 +184,54 @@ async function payCash(
     const changeAmount = amountTendered.amount - orderAmount.amount;
     if (changeAmount < 0n) return null;
 
-    const row = await getOrderById(orderId);
-    if (!row) return null;
+    return drizzleDB.transaction(async (tx) => {
+        const row = await getOrderById(orderId, tx);
+        if (!row) return null;
 
-    const changeBackMoney: Money = {
-        amount: changeAmount,
-        currency: orderAmount.currency,
-    };
-    const tender: Tender = {
-        id: crypto.randomUUID(),
-        locationId: row.locationId,
-        transactionId: crypto.randomUUID(),
-        type: "CASH",
-        amountMoney: orderAmount,
-        cashDetails: {
-            buyerTenderedMoney: amountTendered,
-            changeBackMoney,
-        },
-    };
+        const changeBackMoney: Money = {
+            amount: changeAmount,
+            currency: orderAmount.currency,
+        };
+        const tender: Tender = {
+            id: crypto.randomUUID(),
+            locationId: row.locationId,
+            transactionId: crypto.randomUUID(),
+            type: "CASH",
+            amountMoney: orderAmount,
+            cashDetails: {
+                buyerTenderedMoney: amountTendered,
+                changeBackMoney,
+            },
+        };
 
-    await updateOrder(orderId, {
-        state: "COMPLETED",
-        tenders: stripBigints([
-            ...((row.tenders as Tender[] | null) ?? []),
-            tender,
-        ]),
+        const currentVersion = row.version ?? 0;
+        const result = await tx
+            .update(ordersTable)
+            .set({
+                state: "COMPLETED",
+                tenders: stripBigints([
+                    ...((row.tenders as Tender[] | null) ?? []),
+                    tender,
+                ]),
+                version: currentVersion + 1,
+                updatedAt: new Date(),
+            })
+            .where(
+                and(
+                    eq(ordersTable.referenceId, orderId),
+                    eq(ordersTable.version, currentVersion),
+                ),
+            )
+            .returning({ id: ordersTable.id });
+
+        if (result.length === 0) {
+            throw new Error(
+                "Concurrent modification detected — order was updated by another payment",
+            );
+        }
+
+        return changeBackMoney;
     });
-
-    return changeBackMoney;
 }
 
 /**

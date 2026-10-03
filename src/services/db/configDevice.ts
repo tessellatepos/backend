@@ -11,7 +11,7 @@ export async function createConfigDevice(db: TDrizzleDB = drizzleDB) {
     const deviceConfig: typeof configDevicesTable.$inferInsert = {
         id: generateDeviceNanoID(),
         created_at: new Date(),
-        paring_code: generateParingCode(),
+        pairing_code: generatePairingCode(),
         code_created_at: new Date(),
         paired_at: null,
         square_location: null,
@@ -20,8 +20,6 @@ export async function createConfigDevice(db: TDrizzleDB = drizzleDB) {
         device_type: null,
     };
 
-    console.log(deviceConfig);
-    console.log("Creating config device");
     await db.insert(configDevicesTable).values(deviceConfig);
     return deviceConfig;
 }
@@ -31,13 +29,13 @@ export async function getAllConfigDevices(db: TDrizzleDB = drizzleDB) {
 }
 
 export async function getConfigDeviceByPairingCode(
-    paring_code: string,
+    pairing_code: string,
     db: TDrizzleDB = drizzleDB,
 ) {
     const deviceConfig = await db
         .select()
         .from(configDevicesTable)
-        .where(eq(configDevicesTable.paring_code, paring_code))
+        .where(eq(configDevicesTable.pairing_code, pairing_code))
         .limit(1);
     return deviceConfig[0] || null;
 }
@@ -58,6 +56,13 @@ export async function getPairedDeviceByType(
     deviceType: DeviceType,
     db: TDrizzleDB = drizzleDB,
 ) {
+    // TERMINAL devices pair through Square's own Device Code flow (square_device_id);
+    // MOBILE_READER devices pair through our OTP flow (device_hardware_id).
+    const pairingIdentifierColumn =
+        deviceType === "TERMINAL"
+            ? configDevicesTable.square_device_id
+            : configDevicesTable.device_hardware_id;
+
     const deviceConfig = await db
         .select()
         .from(configDevicesTable)
@@ -65,7 +70,7 @@ export async function getPairedDeviceByType(
             and(
                 eq(configDevicesTable.device_type, deviceType),
                 isNotNull(configDevicesTable.paired_at),
-                isNotNull(configDevicesTable.device_hardware_id),
+                isNotNull(pairingIdentifierColumn),
             ),
         )
         .limit(1);
@@ -87,7 +92,6 @@ export async function deleteConfigDevice(
     id: string,
     db: TDrizzleDB = drizzleDB,
 ) {
-    console.log("Deleting config device with id:", id);
     await db.delete(configDevicesTable).where(eq(configDevicesTable.id, id));
 }
 
@@ -97,7 +101,7 @@ function generateDeviceNanoID() {
     return nanoid();
 }
 
-export function generateParingCode() {
+export function generatePairingCode() {
     const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
     const nanoid = customAlphabet(alphabet, 8);
     return nanoid();

@@ -11,11 +11,10 @@
         "rootDir": "src",
         "strict": true,
         "skipLibCheck": true,
-        "baseUrl": ".",
         "paths": {
-            "@/*": ["src/*"]
+            "@/*": ["./src/*"]
         }
     },
-    "include": ["src", "*/**.ts", "*/**/*.tsx", "*.ts"],
+    "include": ["src"],
     "exclude": ["node_modules", "dist", "lib"]
 }

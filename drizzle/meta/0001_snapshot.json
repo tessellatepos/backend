@@ -1,719 +1,691 @@
 {
-  "id": "51a8052d-eecd-453a-b41c-4e5eb035f6fb",
-  "prevId": "d56337c4-ed2a-4fa7-83de-e74afedc469a",
-  "version": "7",
-  "dialect": "postgresql",
-  "tables": {
-    "public.tessellate-catalog-categories": {
-      "name": "tessellate-catalog-categories",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "varchar(255)",
-          "primaryKey": true,
-          "notNull": true
+    "id": "51a8052d-eecd-453a-b41c-4e5eb035f6fb",
+    "prevId": "d56337c4-ed2a-4fa7-83de-e74afedc469a",
+    "version": "7",
+    "dialect": "postgresql",
+    "tables": {
+        "public.tessellate-catalog-categories": {
+            "name": "tessellate-catalog-categories",
+            "schema": "",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "varchar(255)",
+                    "primaryKey": true,
+                    "notNull": true
+                },
+                "name": {
+                    "name": "name",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "parent_category_id": {
+                    "name": "parent_category_id",
+                    "type": "varchar(255)",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "image_id": {
+                    "name": "image_id",
+                    "type": "varchar(255)",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "image_url": {
+                    "name": "image_url",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "provider_metadata": {
+                    "name": "provider_metadata",
+                    "type": "jsonb",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "default": "now()"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "timestamp with time zone",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "default": "now()"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "policies": {},
+            "checkConstraints": {},
+            "isRLSEnabled": false
         },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
+        "public.tessellate-catalog-item-categories": {
+            "name": "tessellate-catalog-item-categories",
+            "schema": "",
+            "columns": {
+                "item_id": {
+                    "name": "item_id",
+                    "type": "varchar(255)",
+                    "primaryKey": false,
+                    "notNull": true
+                },
+                "category_id": {
+                    "name": "category_id",
+                    "type": "varchar(255)",
+                    "primaryKey": false,
+                    "notNull": true
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {
+                "tessellate-catalog-item-categories_item_id_tessellate-catalog-items_id_fk": {
+                    "name": "tessellate-catalog-item-categories_item_id_tessellate-catalog-items_id_fk",
+                    "tableFrom": "tessellate-catalog-item-categories",
+                    "tableTo": "tessellate-catalog-items",
+                    "columnsFrom": ["item_id"],
+                    "columnsTo": ["id"],
+                    "onDelete": "no action",
+                    "onUpdate": "no action"
+                },
+                "tessellate-catalog-item-categories_category_id_tessellate-catalog-categories_id_fk": {
+                    "name": "tessellate-catalog-item-categories_category_id_tessellate-catalog-categories_id_fk",
+                    "tableFrom": "tessellate-catalog-item-categories",
+                    "tableTo": "tessellate-catalog-categories",
+                    "columnsFrom": ["category_id"],
+                    "columnsTo": ["id"],
+                    "onDelete": "no action",
+                    "onUpdate": "no action"
+                }
+            },
+            "compositePrimaryKeys": {
+                "tessellate-catalog-item-categories_item_id_category_id_pk": {
+                    "name": "tessellate-catalog-item-categories_item_id_category_id_pk",
+                    "columns": ["item_id", "category_id"]
+                }
+            },
+            "uniqueConstraints": {},
+            "policies": {},
+            "checkConstraints": {},
+            "isRLSEnabled": false
         },
-        "parent_category_id": {
-          "name": "parent_category_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
+        "public.tessellate-catalog-item-locations": {
+            "name": "tessellate-catalog-item-locations",
+            "schema": "",
+            "columns": {
+                "item_id": {
+                    "name": "item_id",
+                    "type": "varchar(255)",
+                    "primaryKey": false,
+                    "notNull": true
+                },
+                "location_id": {
+                    "name": "location_id",
+                    "type": "varchar(255)",
+                    "primaryKey": false,
+                    "notNull": true
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {
+                "tessellate-catalog-item-locations_item_id_tessellate-catalog-items_id_fk": {
+                    "name": "tessellate-catalog-item-locations_item_id_tessellate-catalog-items_id_fk",
+                    "tableFrom": "tessellate-catalog-item-locations",
+                    "tableTo": "tessellate-catalog-items",
+                    "columnsFrom": ["item_id"],
+                    "columnsTo": ["id"],
+                    "onDelete": "no action",
+                    "onUpdate": "no action"
+                }
+            },
+            "compositePrimaryKeys": {
+                "tessellate-catalog-item-locations_item_id_location_id_pk": {
+                    "name": "tessellate-catalog-item-locations_item_id_location_id_pk",
+                    "columns": ["item_id", "location_id"]
+                }
+            },
+            "uniqueConstraints": {},
+            "policies": {},
+            "checkConstraints": {},
+            "isRLSEnabled": false
         },
-        "image_id": {
-          "name": "image_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
+        "public.tessellate-catalog-item-variations": {
+            "name": "tessellate-catalog-item-variations",
+            "schema": "",
+            "columns": {
+                "variation_id": {
+                    "name": "variation_id",
+                    "type": "varchar(255)",
+                    "primaryKey": true,
+                    "notNull": true
+                },
+                "item_id": {
+                    "name": "item_id",
+                    "type": "varchar(255)",
+                    "primaryKey": false,
+                    "notNull": true
+                },
+                "name": {
+                    "name": "name",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "sku": {
+                    "name": "sku",
+                    "type": "varchar(255)",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "upc": {
+                    "name": "upc",
+                    "type": "varchar(255)",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "ordinal": {
+                    "name": "ordinal",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "pricing_type": {
+                    "name": "pricing_type",
+                    "type": "pricing_type",
+                    "typeSchema": "public",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "price_money": {
+                    "name": "price_money",
+                    "type": "jsonb",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "location_overrides": {
+                    "name": "location_overrides",
+                    "type": "jsonb",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "track_inventory": {
+                    "name": "track_inventory",
+                    "type": "boolean",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "provider_metadata": {
+                    "name": "provider_metadata",
+                    "type": "jsonb",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "default": "now()"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "timestamp with time zone",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "default": "now()"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {
+                "tessellate-catalog-item-variations_item_id_tessellate-catalog-items_id_fk": {
+                    "name": "tessellate-catalog-item-variations_item_id_tessellate-catalog-items_id_fk",
+                    "tableFrom": "tessellate-catalog-item-variations",
+                    "tableTo": "tessellate-catalog-items",
+                    "columnsFrom": ["item_id"],
+                    "columnsTo": ["id"],
+                    "onDelete": "no action",
+                    "onUpdate": "no action"
+                }
+            },
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "policies": {},
+            "checkConstraints": {},
+            "isRLSEnabled": false
         },
-        "image_url": {
-          "name": "image_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
+        "public.tessellate-catalog-items": {
+            "name": "tessellate-catalog-items",
+            "schema": "",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "varchar(255)",
+                    "primaryKey": true,
+                    "notNull": true
+                },
+                "name": {
+                    "name": "name",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "display_name": {
+                    "name": "display_name",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "label_color": {
+                    "name": "label_color",
+                    "type": "varchar(20)",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "is_taxable": {
+                    "name": "is_taxable",
+                    "type": "boolean",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "is_archived": {
+                    "name": "is_archived",
+                    "type": "boolean",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "default": false
+                },
+                "image": {
+                    "name": "image",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "provider_metadata": {
+                    "name": "provider_metadata",
+                    "type": "jsonb",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "default": "now()"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "timestamp with time zone",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "default": "now()"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "policies": {},
+            "checkConstraints": {},
+            "isRLSEnabled": false
         },
-        "provider_metadata": {
-          "name": "provider_metadata",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
+        "public.tessellate-devices-config": {
+            "name": "tessellate-devices-config",
+            "schema": "",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "varchar(12)",
+                    "primaryKey": true,
+                    "notNull": true
+                },
+                "entry_created_at": {
+                    "name": "entry_created_at",
+                    "type": "timestamp with time zone",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "default": "now()"
+                },
+                "paring_code": {
+                    "name": "paring_code",
+                    "type": "varchar(8)",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "code_created_at": {
+                    "name": "code_created_at",
+                    "type": "timestamp with time zone",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "default": "now()"
+                },
+                "paired_at": {
+                    "name": "paired_at",
+                    "type": "timestamp with time zone",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "square_location": {
+                    "name": "square_location",
+                    "type": "varchar(14)",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "customer_facing": {
+                    "name": "customer_facing",
+                    "type": "boolean",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "device_hardware_id": {
+                    "name": "device_hardware_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "device_type": {
+                    "name": "device_type",
+                    "type": "device_type",
+                    "typeSchema": "public",
+                    "primaryKey": false,
+                    "notNull": false
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "policies": {},
+            "checkConstraints": {},
+            "isRLSEnabled": false
         },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
+        "public.tessellate-system-config": {
+            "name": "tessellate-system-config",
+            "schema": "",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "integer",
+                    "primaryKey": true,
+                    "notNull": true
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "default": "now()"
+                },
+                "encrypted_access_token": {
+                    "name": "encrypted_access_token",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true
+                },
+                "encrypted_refresh_token": {
+                    "name": "encrypted_refresh_token",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true
+                },
+                "application_id": {
+                    "name": "application_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "location_id": {
+                    "name": "location_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "merchant_id": {
+                    "name": "merchant_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "token_expires_at": {
+                    "name": "token_expires_at",
+                    "type": "timestamp with time zone",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "refresh_token_expires_at": {
+                    "name": "refresh_token_expires_at",
+                    "type": "timestamp with time zone",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "timestamp with time zone",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "default": "now()"
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "policies": {},
+            "checkConstraints": {},
+            "isRLSEnabled": false
         },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
+        "public.tessellate-orders": {
+            "name": "tessellate-orders",
+            "schema": "",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "location_id": {
+                    "name": "location_id",
+                    "type": "text",
+                    "primaryKey": false,
+                    "notNull": true
+                },
+                "reference_id": {
+                    "name": "reference_id",
+                    "type": "varchar(255)",
+                    "primaryKey": true,
+                    "notNull": true
+                },
+                "source_name": {
+                    "name": "source_name",
+                    "type": "varchar(255)",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "customer_id": {
+                    "name": "customer_id",
+                    "type": "varchar(255)",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "line_items": {
+                    "name": "line_items",
+                    "type": "jsonb",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "taxes": {
+                    "name": "taxes",
+                    "type": "jsonb",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "discounts": {
+                    "name": "discounts",
+                    "type": "jsonb",
+                    "primaryKey": false,
+                    "notNull": true
+                },
+                "net_amount": {
+                    "name": "net_amount",
+                    "type": "jsonb",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "rounding_adjustment": {
+                    "name": "rounding_adjustment",
+                    "type": "jsonb",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "tenders": {
+                    "name": "tenders",
+                    "type": "jsonb",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "created_at": {
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "default": "now()"
+                },
+                "updated_at": {
+                    "name": "updated_at",
+                    "type": "timestamp with time zone",
+                    "primaryKey": false,
+                    "notNull": false,
+                    "default": "now()"
+                },
+                "state": {
+                    "name": "state",
+                    "type": "varchar(20)",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "version": {
+                    "name": "version",
+                    "type": "integer",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "total_money": {
+                    "name": "total_money",
+                    "type": "jsonb",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "total_tax_money": {
+                    "name": "total_tax_money",
+                    "type": "jsonb",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "total_discount_money": {
+                    "name": "total_discount_money",
+                    "type": "jsonb",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "total_tip_money": {
+                    "name": "total_tip_money",
+                    "type": "jsonb",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "total_service_charge_money": {
+                    "name": "total_service_charge_money",
+                    "type": "jsonb",
+                    "primaryKey": false,
+                    "notNull": false
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "policies": {},
+            "checkConstraints": {},
+            "isRLSEnabled": false
+        },
+        "public.tessellate-plugin-registry": {
+            "name": "tessellate-plugin-registry",
+            "schema": "",
+            "columns": {
+                "id": {
+                    "name": "id",
+                    "type": "varchar(255)",
+                    "primaryKey": true,
+                    "notNull": true
+                },
+                "version": {
+                    "name": "version",
+                    "type": "varchar(255)",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "source_ref": {
+                    "name": "source_ref",
+                    "type": "jsonb",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "sha256": {
+                    "name": "sha256",
+                    "type": "varchar(255)",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "tables": {
+                    "name": "tables",
+                    "type": "jsonb",
+                    "primaryKey": false,
+                    "notNull": false
+                },
+                "installed_at": {
+                    "name": "installed_at",
+                    "type": "timestamp",
+                    "primaryKey": false,
+                    "notNull": false
+                }
+            },
+            "indexes": {},
+            "foreignKeys": {},
+            "compositePrimaryKeys": {},
+            "uniqueConstraints": {},
+            "policies": {},
+            "checkConstraints": {},
+            "isRLSEnabled": false
         }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
     },
-    "public.tessellate-catalog-item-categories": {
-      "name": "tessellate-catalog-item-categories",
-      "schema": "",
-      "columns": {
-        "item_id": {
-          "name": "item_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
+    "enums": {
+        "public.device_type": {
+            "name": "device_type",
+            "schema": "public",
+            "values": ["TERMINAL", "MOBILE_READER"]
         },
-        "category_id": {
-          "name": "category_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
+        "public.pricing_type": {
+            "name": "pricing_type",
+            "schema": "public",
+            "values": ["FIXED", "VARIABLE"]
         }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "tessellate-catalog-item-categories_item_id_tessellate-catalog-items_id_fk": {
-          "name": "tessellate-catalog-item-categories_item_id_tessellate-catalog-items_id_fk",
-          "tableFrom": "tessellate-catalog-item-categories",
-          "tableTo": "tessellate-catalog-items",
-          "columnsFrom": [
-            "item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "tessellate-catalog-item-categories_category_id_tessellate-catalog-categories_id_fk": {
-          "name": "tessellate-catalog-item-categories_category_id_tessellate-catalog-categories_id_fk",
-          "tableFrom": "tessellate-catalog-item-categories",
-          "tableTo": "tessellate-catalog-categories",
-          "columnsFrom": [
-            "category_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "tessellate-catalog-item-categories_item_id_category_id_pk": {
-          "name": "tessellate-catalog-item-categories_item_id_category_id_pk",
-          "columns": [
-            "item_id",
-            "category_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
     },
-    "public.tessellate-catalog-item-locations": {
-      "name": "tessellate-catalog-item-locations",
-      "schema": "",
-      "columns": {
-        "item_id": {
-          "name": "item_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "location_id": {
-          "name": "location_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "tessellate-catalog-item-locations_item_id_tessellate-catalog-items_id_fk": {
-          "name": "tessellate-catalog-item-locations_item_id_tessellate-catalog-items_id_fk",
-          "tableFrom": "tessellate-catalog-item-locations",
-          "tableTo": "tessellate-catalog-items",
-          "columnsFrom": [
-            "item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "tessellate-catalog-item-locations_item_id_location_id_pk": {
-          "name": "tessellate-catalog-item-locations_item_id_location_id_pk",
-          "columns": [
-            "item_id",
-            "location_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.tessellate-catalog-item-variations": {
-      "name": "tessellate-catalog-item-variations",
-      "schema": "",
-      "columns": {
-        "variation_id": {
-          "name": "variation_id",
-          "type": "varchar(255)",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "item_id": {
-          "name": "item_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sku": {
-          "name": "sku",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "upc": {
-          "name": "upc",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "ordinal": {
-          "name": "ordinal",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pricing_type": {
-          "name": "pricing_type",
-          "type": "pricing_type",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "price_money": {
-          "name": "price_money",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "location_overrides": {
-          "name": "location_overrides",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "track_inventory": {
-          "name": "track_inventory",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "provider_metadata": {
-          "name": "provider_metadata",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "tessellate-catalog-item-variations_item_id_tessellate-catalog-items_id_fk": {
-          "name": "tessellate-catalog-item-variations_item_id_tessellate-catalog-items_id_fk",
-          "tableFrom": "tessellate-catalog-item-variations",
-          "tableTo": "tessellate-catalog-items",
-          "columnsFrom": [
-            "item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.tessellate-catalog-items": {
-      "name": "tessellate-catalog-items",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "varchar(255)",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "display_name": {
-          "name": "display_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "label_color": {
-          "name": "label_color",
-          "type": "varchar(20)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "is_taxable": {
-          "name": "is_taxable",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "is_archived": {
-          "name": "is_archived",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": false,
-          "default": false
-        },
-        "image": {
-          "name": "image",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "provider_metadata": {
-          "name": "provider_metadata",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.tessellate-devices-config": {
-      "name": "tessellate-devices-config",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "varchar(12)",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "entry_created_at": {
-          "name": "entry_created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        },
-        "paring_code": {
-          "name": "paring_code",
-          "type": "varchar(8)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "code_created_at": {
-          "name": "code_created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        },
-        "paired_at": {
-          "name": "paired_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "square_location": {
-          "name": "square_location",
-          "type": "varchar(14)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "customer_facing": {
-          "name": "customer_facing",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "device_hardware_id": {
-          "name": "device_hardware_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "device_type": {
-          "name": "device_type",
-          "type": "device_type",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.tessellate-system-config": {
-      "name": "tessellate-system-config",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        },
-        "encrypted_access_token": {
-          "name": "encrypted_access_token",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "encrypted_refresh_token": {
-          "name": "encrypted_refresh_token",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "application_id": {
-          "name": "application_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "location_id": {
-          "name": "location_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "merchant_id": {
-          "name": "merchant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "token_expires_at": {
-          "name": "token_expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "refresh_token_expires_at": {
-          "name": "refresh_token_expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.tessellate-orders": {
-      "name": "tessellate-orders",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "location_id": {
-          "name": "location_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reference_id": {
-          "name": "reference_id",
-          "type": "varchar(255)",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "source_name": {
-          "name": "source_name",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "customer_id": {
-          "name": "customer_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "line_items": {
-          "name": "line_items",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "taxes": {
-          "name": "taxes",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "discounts": {
-          "name": "discounts",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "net_amount": {
-          "name": "net_amount",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "rounding_adjustment": {
-          "name": "rounding_adjustment",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "tenders": {
-          "name": "tenders",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        },
-        "state": {
-          "name": "state",
-          "type": "varchar(20)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "version": {
-          "name": "version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "total_money": {
-          "name": "total_money",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "total_tax_money": {
-          "name": "total_tax_money",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "total_discount_money": {
-          "name": "total_discount_money",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "total_tip_money": {
-          "name": "total_tip_money",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "total_service_charge_money": {
-          "name": "total_service_charge_money",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.tessellate-plugin-registry": {
-      "name": "tessellate-plugin-registry",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "varchar(255)",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "version": {
-          "name": "version",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_ref": {
-          "name": "source_ref",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "sha256": {
-          "name": "sha256",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "tables": {
-          "name": "tables",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "installed_at": {
-          "name": "installed_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    }
-  },
-  "enums": {
-    "public.device_type": {
-      "name": "device_type",
-      "schema": "public",
-      "values": [
-        "TERMINAL",
-        "MOBILE_READER"
-      ]
-    },
-    "public.pricing_type": {
-      "name": "pricing_type",
-      "schema": "public",
-      "values": [
-        "FIXED",
-        "VARIABLE"
-      ]
-    }
-  },
-  "schemas": {},
-  "sequences": {},
-  "roles": {},
-  "policies": {},
-  "views": {},
-  "_meta": {
-    "columns": {},
     "schemas": {},
-    "tables": {}
-  }
+    "sequences": {},
+    "roles": {},
+    "policies": {},
+    "views": {},
+    "_meta": {
+        "columns": {},
+        "schemas": {},
+        "tables": {}
+    }
 }

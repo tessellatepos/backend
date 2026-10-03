@@ -22,7 +22,7 @@ export const configDevicesTable = pgTable("tessellate-devices-config", {
     created_at: timestamp("entry_created_at", {
         withTimezone: true,
     }).defaultNow(),
-    paring_code: varchar("paring_code", { length: 8 }),
+    pairing_code: varchar("paring_code", { length: 8 }),
     code_created_at: timestamp("code_created_at", {
         withTimezone: true,
     }).defaultNow(),
@@ -31,6 +31,9 @@ export const configDevicesTable = pgTable("tessellate-devices-config", {
     customer_facing: boolean(),
     device_hardware_id: text("device_hardware_id"),
     device_type: deviceTypeEnum("device_type"),
+    square_device_id: text("square_device_id"),
+    square_device_code_id: text("square_device_code_id"),
+    square_pair_by: timestamp("square_pair_by", { withTimezone: true }),
 });
 
 export const configSystemTable = pgTable("tessellate-system-config", {

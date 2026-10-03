@@ -52,8 +52,8 @@ export async function getRedisClient(): Promise<
         url: process.env.REDIS_URL,
         // password: process.env.REDIS_PASSWORD,
         socket: {
-            // @ts-expect-error, supposed to be a number, trust
-            keepAlive: 5000,
+            keepAlive: true,
+            keepAliveInitialDelay: 5000,
         },
     });
 
@@ -122,6 +122,16 @@ export const getItemByItemID = async (key: string): Promise<Item | null> => {
         logger.error(`No data found in cache for key: ${key}`, err);
         return null;
     }
+};
+
+/**
+ * Looks up a single catalog item by its id from the Redis cache populated
+ * by setItemsByLocationID.
+ * @param itemId the id of the item to retrieve.
+ * @returns the item, or null if it isn't cached.
+ */
+export const getItemById = async (itemId: string): Promise<Item | null> => {
+    return getItemByItemID(ITEM_KEY(itemId));
 };
 
 /**

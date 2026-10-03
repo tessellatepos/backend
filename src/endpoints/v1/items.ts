@@ -1,14 +1,22 @@
 import express from "express";
 import { Request, Response, Router } from "express";
 import { getItemsByLocationID } from "@/services/redis";
+import { getConfigDeviceByID } from "@/services/db/configDevice";
 import { type Item } from "@tessellatepos/sdk";
 import { Logger } from "tslog";
 import { updateCatalogInCache } from "@/services/catalogSync";
 import { getParamValue } from "@/utils/expressHelpers";
+import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 
-export const itemRouter: Router = express.Router();
+const itemRouter: Router = express.Router();
 
 const logger = new Logger();
+
+export const itemsv1Endpoint: ITessellateApiRouter = {
+    route_path: "/items",
+    version: "v1",
+    router: itemRouter,
+};
 
 // itemRouter.get("/items/:itemId", async (req: Request, res: Response) => {});
 
@@ -23,6 +31,28 @@ itemRouter.get(
             });
             return;
         }
+
+        const deviceConfig = await getConfigDeviceByID(deviceId);
+        if (!deviceConfig) {
+            res.status(404).json({
+                message: "Device configuration not found",
+            });
+            return;
+        }
+
+        const locationId = deviceConfig.square_location;
+        if (!locationId) {
+            res.status(400).json({
+                message: "Device has no associated location",
+            });
+            return;
+        }
+
+        let items: Item[] = [];
+        const fetched = await getItemsByLocationID(locationId);
+        if (Array.isArray(fetched)) items = fetched;
+
+        res.json(items);
     },
 );
 
@@ -43,7 +73,7 @@ itemRouter.get("/by-location/", async (req: Request, res: Response) => {
 
 itemRouter.get(
     "/by-location/:locationId",
-    async (req: Request, res: Response) => {
+    async (req: Request<{ locationId: string }>, res: Response) => {
         const locationId = req.params.locationId;
 
         if (!locationId || locationId === "undefined") {
@@ -57,10 +87,6 @@ itemRouter.get(
 
         if (!locationId) {
             logger.warn("No locationID provided, error fetching items");
-        } else if (Array.isArray(locationId)) {
-            for (const id in locationId) {
-                items = items.concat(await getItemsByLocationID(id));
-            }
         } else {
             items = items.concat(await getItemsByLocationID(locationId));
         }

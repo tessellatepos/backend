@@ -16,6 +16,8 @@ const logger = new Logger();
 /**
  * Permissions requested from the seller. PAYMENTS_WRITE_IN_PERSON is what
  * lets the short-lived token authorize the Mobile Payments SDK on a phone.
+ * DEVICE_CREDENTIAL_MANAGEMENT is required to create/inspect Device Codes
+ * when pairing a physical Square Terminal.
  */
 const SQUARE_SCOPES = [
     "MERCHANT_PROFILE_READ",
@@ -25,6 +27,7 @@ const SQUARE_SCOPES = [
     "PAYMENTS_READ",
     "ORDERS_WRITE",
     "ORDERS_READ",
+    "DEVICE_CREDENTIAL_MANAGEMENT",
 ];
 
 /**

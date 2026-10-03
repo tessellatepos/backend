@@ -4,7 +4,7 @@ import { Logger } from "tslog";
 import {
     createConfigDevice,
     getConfigDeviceByPairingCode,
-    generateParingCode,
+    generatePairingCode,
     updateConfigDevice,
     deleteConfigDevice,
     getConfigDeviceByID,
@@ -12,10 +12,18 @@ import {
 } from "@/services/db/configDevice";
 import { type IConfigDevice } from "@tessellatepos/sdk";
 import { getParamValue } from "@/utils/expressHelpers";
+import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
+import { activeProvider } from "@/services/providers";
 
-export const configDeviceRouter: Router = express.Router();
+const configDeviceRouter: Router = express.Router();
 
 const logger = new Logger();
+
+export const configDevicev1Endpoint: ITessellateApiRouter = {
+    route_path: "/config/devices",
+    version: "v1",
+    router: configDeviceRouter,
+};
 
 configDeviceRouter.get("/", async (req, res) => {
     logger.info("Received GET request for all device configurations");
@@ -50,7 +58,7 @@ configDeviceRouter.get(
             const newConfig = {
                 id: config.id,
                 created_at: config.created_at,
-                paring_code: generateParingCode(),
+                pairing_code: generatePairingCode(),
                 code_created_at: new Date(),
                 paired_at: null,
                 square_location: config.square_location,
@@ -60,6 +68,9 @@ configDeviceRouter.get(
             };
             await updateConfigDevice(config.id, newConfig);
             res.json(newConfig);
+        } else {
+            res.status(404).json({ message: "Pairing code not found" });
+            return;
         }
     },
 );
@@ -80,7 +91,7 @@ configDeviceRouter.delete(
             `Received DELETE request for pairing device with paring code: ${deviceId}`,
         );
         await deleteConfigDevice(deviceId);
-        const checkDeleteDevice = await getConfigDeviceByPairingCode(deviceId);
+        const checkDeleteDevice = await getConfigDeviceByID(deviceId);
 
         if (!checkDeleteDevice) {
             res.status(200).json({
@@ -124,7 +135,7 @@ configDeviceRouter.put(
             const newConfig = {
                 id: dbConfig.id,
                 created_at: dbConfig.created_at,
-                paring_code: null,
+                pairing_code: null,
                 code_created_at: null,
                 paired_at: new Date(),
                 square_location: dbConfig.square_location,
@@ -171,7 +182,7 @@ configDeviceRouter.post("/:deviceId", async (req: Request, res: Response) => {
         `Received POST request for device ID: ${deviceId} with body: ${JSON.stringify(req.body)}`,
     );
     const updatedConfig = req.body as IConfigDevice;
-    await updateConfigDevice(updatedConfig.id, updatedConfig);
+    await updateConfigDevice(deviceId, updatedConfig);
     res.json(updatedConfig);
 });
 
@@ -191,6 +202,7 @@ configDeviceRouter.delete("/:deviceId", async (req: Request, res: Response) => {
         res.status(404).json({
             message: "Device configuration does not exist.",
         });
+        return;
     } else {
         await deleteConfigDevice(deviceId);
         res.status(200).json({
@@ -198,3 +210,117 @@ configDeviceRouter.delete("/:deviceId", async (req: Request, res: Response) => {
         });
     }
 });
+
+// Pairs a physical Square Terminal to this merchant account via Square's own
+// Device Code flow — separate from the OTP flow above, which pairs our own
+// app onto a phone. The returned code is entered on the terminal's screen.
+configDeviceRouter.post(
+    "/:deviceId/square-pairing",
+    async (req: Request, res: Response) => {
+        const deviceId = getParamValue(req.params.deviceId);
+        if (!deviceId || deviceId === "undefined") {
+            res.status(400).json({ message: "Invalid deviceID" });
+            return;
+        }
+
+        if (!activeProvider.createDeviceCode) {
+            res.status(400).json({
+                message: "Device pairing is not supported by this provider",
+            });
+            return;
+        }
+
+        const config = await getConfigDeviceByID(deviceId);
+        if (!config) {
+            res.status(404).json({
+                message: "Device configuration does not exist.",
+            });
+            return;
+        }
+
+        const locationId = req.body?.locationId || config.square_location;
+        if (!locationId) {
+            res.status(400).json({
+                message: "A Square location is required to pair a terminal",
+            });
+            return;
+        }
+
+        const name = req.body?.name || `Terminal ${deviceId}`;
+
+        logger.info(`Requesting Square device code for device ID: ${deviceId}`);
+        const deviceCode = await activeProvider.createDeviceCode(
+            locationId,
+            name,
+        );
+
+        if (!deviceCode) {
+            res.status(500).json({
+                message: "Failed to create Square device code",
+            });
+            return;
+        }
+
+        await updateConfigDevice(deviceId, {
+            device_type: "TERMINAL",
+            square_location: locationId,
+            square_device_code_id: deviceCode.id,
+            square_pair_by: deviceCode.pairBy
+                ? new Date(deviceCode.pairBy)
+                : null,
+        });
+
+        res.status(200).json({
+            code: deviceCode.code,
+            pairBy: deviceCode.pairBy,
+        });
+    },
+);
+
+// Polls the status of a pending Square Terminal pairing. Once Square reports
+// the code as PAIRED, the terminal's real Square device_id is saved so
+// order checkouts can be created against it.
+configDeviceRouter.get(
+    "/:deviceId/square-pairing",
+    async (req: Request, res: Response) => {
+        const deviceId = getParamValue(req.params.deviceId);
+        if (!deviceId || deviceId === "undefined") {
+            res.status(400).json({ message: "Invalid deviceID" });
+            return;
+        }
+
+        if (!activeProvider.getDeviceCode) {
+            res.status(400).json({
+                message: "Device pairing is not supported by this provider",
+            });
+            return;
+        }
+
+        const config = await getConfigDeviceByID(deviceId);
+        if (!config?.square_device_code_id) {
+            res.status(404).json({
+                message: "No pending Square pairing for this device",
+            });
+            return;
+        }
+
+        const deviceCode = await activeProvider.getDeviceCode(
+            config.square_device_code_id,
+        );
+        if (!deviceCode) {
+            res.status(404).json({ message: "Square pairing not found" });
+            return;
+        }
+
+        if (deviceCode.status === "PAIRED" && deviceCode.deviceId) {
+            await updateConfigDevice(deviceId, {
+                square_device_id: deviceCode.deviceId,
+                square_device_code_id: null,
+                square_pair_by: null,
+                paired_at: new Date(),
+            });
+        }
+
+        res.status(200).json({ status: deviceCode.status });
+    },
+);
