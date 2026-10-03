@@ -1,0 +1,14 @@
+node_modules
+dist
+lib
+build
+.react-router
+*.tsbuildinfo
+.git
+.husky
+.idea
+.DS_Store
+.env*
+.npmrc
+package-lock.json
+Dockerfile

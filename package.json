@@ -3,7 +3,6 @@
     "version": "0.1.0-dev",
     "author": "Tessellate POS <tessellate@travisfriesen.ca>",
     "license": "AGPL-3.0-only",
-    "private": true,
     "main": "src/server.ts",
     "scripts": {
         "dev": "tsx src/server.ts --watch",
@@ -21,8 +20,8 @@
     },
     "dependencies": {
         "@origranot/ts-logger": "^1.12.0",
-        "@tessellatepos/plugin-sdk": "workspace:*",
-        "@tessellatepos/sdk": "workspace:*",
+        "@tessellatepos/plugin-sdk": "0.0.2-alpha",
+        "@tessellatepos/sdk": "0.0.1-alpha",
         "@types/express": "^5.0.6",
         "better-auth": "^1.7.2",
         "cors": "^2.8.6",
