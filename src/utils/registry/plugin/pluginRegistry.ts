@@ -63,15 +63,15 @@ export class TessellatePluginRegistry {
         def: HookDefinition<TInput, TOutput>,
         input: TInput,
     ): Promise<HookResult<TOutput>> {
-        let value = input;
+        let value: unknown = input;
         for (const plugin of this.plugins.values()) {
             for (const handler of plugin.getHookHandlers(def.name)) {
-                const result = await handler(value);
+                const result = (await handler(value)) as HookResult<unknown>;
                 if (!result.ok) return result;
                 value = result.value;
             }
         }
-        return { ok: true, value: value as unknown as TOutput };
+        return { ok: true, value: value as TOutput };
     }
 
     // ── Event dispatch (fire and forget) ──

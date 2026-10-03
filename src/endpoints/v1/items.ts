@@ -73,7 +73,7 @@ itemRouter.get("/by-location/", async (req: Request, res: Response) => {
 
 itemRouter.get(
     "/by-location/:locationId",
-    async (req: Request, res: Response) => {
+    async (req: Request<{ locationId: string }>, res: Response) => {
         const locationId = req.params.locationId;
 
         if (!locationId || locationId === "undefined") {

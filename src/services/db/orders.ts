@@ -5,7 +5,11 @@ import { drizzleDB } from "@/services/db/postgres";
 import { stripBigints } from "@tessellatepos/sdk";
 import type { Order } from "@tessellatepos/sdk";
 
-type TDrizzleDB = typeof drizzleDB;
+// The db or a transaction: only the query builders are used
+type TDrizzleDB = Pick<
+    typeof drizzleDB,
+    "select" | "insert" | "update" | "delete"
+>;
 
 function toDbOrder(order: Order): typeof ordersTable.$inferInsert {
     return {

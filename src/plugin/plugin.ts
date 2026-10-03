@@ -41,7 +41,7 @@ export class Plugin {
         kind: K,
         mount: PluginMounts[K][number],
     ) {
-        this.mounts[kind].push(mount as PluginMounts[K][number]);
+        (this.mounts[kind] as PluginMounts[K][number][]).push(mount);
     }
 
     public get<K extends keyof PluginMounts>(kind: K): PluginMounts[K] {

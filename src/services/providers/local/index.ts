@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { parseMoney, stripBigints } from "@tessellatepos/sdk";
+import { CurrencyCode, parseMoney, stripBigints } from "@tessellatepos/sdk";
 import type {
     CartItem,
     Discount,
@@ -118,7 +118,7 @@ async function createOrder(order: Order): Promise<Order | undefined | null> {
     }
 
     let totalAmount = 0n;
-    let currency = "CAD";
+    let currency: CurrencyCode = CurrencyCode.CAD;
 
     for (const lineItem of order.lineItems) {
         const quantity = BigInt(lineItem.quantity ?? 1n);

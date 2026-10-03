@@ -156,11 +156,13 @@ orderRouter.post("/:orderId/checkout", async (req, res) => {
             });
 
             // EVENT: paymentCompleted — plugins react (non-blocking)
-            getPluginRegistry(req).emit(
-                events.paymentCompleted,
-                paidOrder,
-                "CARD",
-            );
+            if (paidOrder) {
+                getPluginRegistry(req).emit(
+                    events.paymentCompleted,
+                    paidOrder,
+                    "CARD",
+                );
+            }
 
             res.status(200)
                 .header("Content-Type", "application/json")
@@ -208,11 +210,13 @@ orderRouter.get("/:orderId/checkout/:checkoutId", async (req, res) => {
             });
 
             // EVENT: paymentCompleted — plugins react (non-blocking)
-            getPluginRegistry(req).emit(
-                events.paymentCompleted,
-                paidOrder,
-                "CARD",
-            );
+            if (paidOrder) {
+                getPluginRegistry(req).emit(
+                    events.paymentCompleted,
+                    paidOrder,
+                    "CARD",
+                );
+            }
 
             res.status(200)
                 .header("Content-Type", "application/json")

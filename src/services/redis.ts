@@ -52,7 +52,8 @@ export async function getRedisClient(): Promise<
         url: process.env.REDIS_URL,
         // password: process.env.REDIS_PASSWORD,
         socket: {
-            keepAlive: 5000,
+            keepAlive: true,
+            keepAliveInitialDelay: 5000,
         },
     });
 
