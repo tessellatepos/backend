@@ -1,4 +1,4 @@
-import type { Item, Money, Order } from "@tessellatepos/sdk";
+import type { Item, Location, Money, Order } from "@tessellatepos/sdk";
 
 /**
  * A source of truth for the item catalog. itemLocationIds is kept separate
@@ -14,6 +14,12 @@ export interface CatalogProvider {
         items: Item[];
         itemLocationIds: Map<string, string[]>;
     }>;
+
+    /**
+     * Fetches the business locations the catalog's location ids refer to.
+     * @returns the locations
+     */
+    fetchLocations(): Promise<Location[]>;
 }
 
 /**

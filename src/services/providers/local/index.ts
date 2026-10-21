@@ -1,8 +1,10 @@
 import { and, eq } from "drizzle-orm";
-import { CurrencyCode, parseMoney, stripBigints } from "@tessellatepos/sdk";
+import { parseMoney, stripBigints } from "@tessellatepos/sdk";
 import type {
     CartItem,
+    CurrencyCode,
     Discount,
+    Location,
     Money,
     Order,
     OrderState,
@@ -11,6 +13,7 @@ import type {
 import { drizzleDB } from "@/services/db/postgres";
 import { catalogItemVariationsTable, ordersTable } from "@/services/db/schema";
 import { getCatalogByLocation } from "@/services/db/catalog";
+import { getLocations } from "@/services/db/locations";
 import { getOrderById } from "@/services/db/orders";
 import type { CatalogProvider, PaymentProvider } from "../types";
 
@@ -108,6 +111,15 @@ async function fetchCatalog(): ReturnType<CatalogProvider["fetchCatalog"]> {
 }
 
 /**
+ * Fetches the locations persisted in Postgres, e.g. by an earlier Square
+ * sync, since there's no external system to list them from.
+ * @returns the locations
+ */
+async function fetchLocations(): Promise<Location[]> {
+    return getLocations();
+}
+
+/**
  * Computes order totals from the local catalog.
  * @param order the order to price, with lineItems already set
  * @returns the priced order, or null if it has no line items
@@ -118,7 +130,7 @@ async function createOrder(order: Order): Promise<Order | undefined | null> {
     }
 
     let totalAmount = 0n;
-    let currency: CurrencyCode = CurrencyCode.CAD;
+    let currency: CurrencyCode = "CAD";
 
     for (const lineItem of order.lineItems) {
         const quantity = BigInt(lineItem.quantity ?? 1n);
@@ -280,6 +292,7 @@ async function confirmMobileReaderPayment(
 
 export const localProvider: CatalogProvider & PaymentProvider = {
     fetchCatalog,
+    fetchLocations,
     createOrder,
     fetchOrder,
     createTerminalCheckout,

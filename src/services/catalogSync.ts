@@ -5,13 +5,14 @@ import {
     getCatalogByLocation,
     importCatalogFromProvider,
 } from "@/services/db/catalog";
+import { importLocationsFromProvider } from "@/services/db/locations";
 
 const logger = new Logger();
 
 const CATALOG_SYNC_INTERVAL_MS = 60 * 60 * 1000;
 
 /**
- * Imports the catalog from the active provider into Postgres, then
+ * Imports the locations and catalog from the active provider into Postgres, then
  * refreshes the Redis cache from Postgres.
  */
 export async function updateCatalogInCache() {
@@ -22,6 +23,8 @@ export async function updateCatalogInCache() {
     }
 
     logger.debug("updateCatalogInCache");
+
+    await importLocationsFromProvider(await activeProvider.fetchLocations());
 
     const providerCatalog = await activeProvider.fetchCatalog();
     await importCatalogFromProvider(providerCatalog);
