@@ -20,8 +20,8 @@
     },
     "dependencies": {
         "@origranot/ts-logger": "^1.12.0",
-        "@tessellatepos/plugin-sdk": "0.0.2-alpha",
-        "@tessellatepos/sdk": "0.0.1-alpha",
+        "@tessellatepos/plugin-sdk": "workspace:*",
+        "@tessellatepos/sdk": "workspace:*",
         "@types/express": "^5.0.6",
         "better-auth": "^1.7.2",
         "cors": "^2.8.6",
@@ -40,7 +40,7 @@
     "devDependencies": {
         "@tsconfig/node-ts": "^23.6.2",
         "@types/cors": "^2.8.19",
-        "@types/node": "^25.0.9",
+        "@types/node": "^24.10.9",
         "@types/pg": "^8.23.1",
         "@types/ws": "^8.18.1",
         "drizzle-kit": "^0.31.9",
