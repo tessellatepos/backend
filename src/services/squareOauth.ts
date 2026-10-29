@@ -61,7 +61,26 @@ const STATE_TTL_MS = 10 * 60 * 1000;
  * the callback on this same process — a multi-instance deployment behind a
  * load balancer would need this in Redis instead.
  */
-const pendingStates = new Map<string, number>();
+const pendingStates = new Map<
+    string,
+    { createdAt: number; returnTo: ReturnTo }
+>();
+
+/** Frontend pages the OAuth callback may send the browser back to. */
+export const RETURN_TO_PATHS = ["/settings", "/setup"] as const;
+/** One of {@link RETURN_TO_PATHS}. */
+export type ReturnTo = (typeof RETURN_TO_PATHS)[number];
+/** Where the callback goes when no (valid) `returnTo` was given. */
+export const DEFAULT_RETURN_TO: ReturnTo = "/settings";
+
+/**
+ * Maps a requested return path onto the allow-list.
+ * @param value the raw `returnTo` query value
+ * @returns the path when allow-listed, otherwise the default
+ */
+export function normalizeReturnTo(value: unknown): ReturnTo {
+    return RETURN_TO_PATHS.find((p) => p === value) ?? DEFAULT_RETURN_TO;
+}
 
 /** Deduplicates concurrent refreshes so we don't race Square's rotation. */
 let inFlightRefresh: Promise<string | null> | null = null;
@@ -95,20 +114,42 @@ function getAppCredentials() {
 }
 
 /**
- * Creates and remembers a CSRF state value for an authorization attempt.
+ * Creates and remembers a CSRF state value for an authorization attempt,
+ * together with the page to return to. The return path stays here on the
+ * server; Square only ever sees the random state.
+ * @param returnTo the requested return path (normalised to the allow-list)
  * @returns the state to include in the authorize URL
  */
-export function createAuthorizationState(): string {
+export function createAuthorizationState(returnTo?: unknown): string {
     const now = Date.now();
-    for (const [state, createdAt] of pendingStates) {
-        if (now - createdAt > STATE_TTL_MS) {
+    for (const [state, entry] of pendingStates) {
+        if (now - entry.createdAt > STATE_TTL_MS) {
             pendingStates.delete(state);
         }
     }
 
     const state = randomToken();
-    pendingStates.set(state, now);
+    pendingStates.set(state, {
+        createdAt: now,
+        returnTo: normalizeReturnTo(returnTo),
+    });
     return state;
+}
+
+/**
+ * Reads the return path stored for a pending state without consuming it.
+ * @param state the state Square echoed back
+ * @returns the stored path, or the default for an unknown or expired state
+ */
+export function peekReturnTo(state: string): ReturnTo {
+    for (const [pending, entry] of pendingStates) {
+        if (safeEqual(pending, state)) {
+            return Date.now() - entry.createdAt <= STATE_TTL_MS
+                ? entry.returnTo
+                : DEFAULT_RETURN_TO;
+        }
+    }
+    return DEFAULT_RETURN_TO;
 }
 
 /**
@@ -140,10 +181,10 @@ export function getAuthorizationUrl(state: string): string {
  * @returns true if the state was issued by us and hasn't expired
  */
 function consumeState(state: string): boolean {
-    for (const [pending, createdAt] of pendingStates) {
+    for (const [pending, entry] of pendingStates) {
         if (safeEqual(pending, state)) {
             pendingStates.delete(pending);
-            return Date.now() - createdAt <= STATE_TTL_MS;
+            return Date.now() - entry.createdAt <= STATE_TTL_MS;
         }
     }
     return false;

@@ -2,12 +2,14 @@ import express, { Router } from "express";
 import { Logger } from "tslog";
 import { frontendUrl } from "@/config/urls";
 import {
+    DEFAULT_RETURN_TO,
     createAuthorizationState,
     getAuthorizationStatus,
     getAuthorizationUrl,
     getDecryptedAccessToken,
     getShortLivedAccessToken,
     handleCallback,
+    peekReturnTo,
     revokeTokens,
 } from "@/services/squareOauth";
 import { getConfigDeviceByID } from "@/services/db/configDevice";
@@ -53,7 +55,7 @@ squareRouter.get(
     requireScope("settings:admin"),
     (req, res) => {
         try {
-            const state = createAuthorizationState();
+            const state = createAuthorizationState(req.query.returnTo);
             const url = getAuthorizationUrl(state);
 
             // The frontend asks for the URL and redirects itself; a browser hitting
@@ -78,10 +80,12 @@ squareRouter.get(
     "/oauth/callback",
     requireScope("settings:admin"),
     async (req, res) => {
-        const settingsUrl = `${frontendUrl ?? ""}/settings`;
         const code = typeof req.query.code === "string" ? req.query.code : null;
         const state =
             typeof req.query.state === "string" ? req.query.state : null;
+        // Where the seller started the flow (allow-listed, stored with the state).
+        const returnTo = state ? peekReturnTo(state) : DEFAULT_RETURN_TO;
+        const settingsUrl = `${frontendUrl ?? ""}${returnTo}`;
 
         if (req.query.error) {
             logger.error(
