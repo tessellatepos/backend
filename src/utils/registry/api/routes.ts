@@ -10,6 +10,7 @@ import { pluginsv1Endpoint } from "@/endpoints/v1/plugins";
 import { squarev1Endpoint } from "@/endpoints/v1/square";
 import { setupv1Endpoint } from "@/endpoints/v1/setup";
 import { authv1Endpoint } from "@/endpoints/v1/auth";
+import { usersv1Endpoint } from "@/endpoints/v1/users";
 import { authProvidersv1Endpoint } from "@/endpoints/v1/authProviders";
 
 export const routes: ITessellateApiRouter[] = [
@@ -25,4 +26,5 @@ export const routes: ITessellateApiRouter[] = [
     pluginsv1Endpoint,
     squarev1Endpoint,
     setupv1Endpoint,
+    usersv1Endpoint,
 ];

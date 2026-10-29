@@ -79,7 +79,12 @@ function inventory(app: Express): RouteEntry[] {
                 ? entry.route_path
                 : `/api/${entry.version}${entry.route_path}`;
             for (const inner of layer.handle.stack) {
-                assert.ok(inner.route, "nested routers are not supported");
+                // Router-level middleware (e.g. a router.use guard) has no route.
+                assert.ok(
+                    inner.route || !inner.handle.stack,
+                    "nested routers are not supported",
+                );
+                if (!inner.route) continue;
                 for (const method of methodsOf(inner.route)) {
                     found.push({
                         method,
