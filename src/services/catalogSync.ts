@@ -1,10 +1,7 @@
 import { Logger } from "tslog";
 import { getRedisClient, setItemsByLocationID } from "@/services/redis";
 import { activeProvider } from "@/services/providers";
-import {
-    getCatalogByLocation,
-    importCatalogFromProvider,
-} from "@/services/db/catalog";
+import { catalogStore, getCatalogByLocation } from "@/services/db/catalog";
 import { locationStore } from "@/services/db/locations";
 import { syncResource } from "@/services/store";
 
@@ -31,8 +28,18 @@ export async function updateCatalogInCache() {
         store: locationStore,
     });
 
-    const providerCatalog = await activeProvider.fetchCatalog();
-    await importCatalogFromProvider(providerCatalog);
+    await syncResource({
+        name: "catalog",
+        fetchRemote: async () => {
+            const { items, itemLocationIds } =
+                await activeProvider.fetchCatalog();
+            return items.map((item) => ({
+                ...item,
+                locationIds: itemLocationIds.get(item.id) ?? [],
+            }));
+        },
+        store: catalogStore,
+    });
 
     const catalog = await getCatalogByLocation();
     await setItemsByLocationID(catalog.items);
