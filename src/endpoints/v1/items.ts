@@ -19,6 +19,23 @@ export const itemsv1Endpoint: ITessellateApiRouter = {
     router: itemRouter,
 };
 
+/**
+ * The catalog a principal may see across locations: everything for an
+ * unpinned principal, otherwise the union of its locations' items.
+ * @param locationIds the principal's `location_ids`
+ * @returns the items, each once
+ */
+async function itemsForLocations(locationIds: "all" | string[]) {
+    if (locationIds === "all") return getItemsByLocationID();
+    const byId = new Map<string, Item>();
+    for (const id of locationIds) {
+        for (const item of await getItemsByLocationID(id)) {
+            byId.set(item.id, item);
+        }
+    }
+    return [...byId.values()];
+}
+
 // itemRouter.get("/items/:itemId", async (req: Request, res: Response) => {});
 
 itemRouter.get(
@@ -50,6 +67,13 @@ itemRouter.get(
             return;
         }
 
+        // A pinned principal may only read its own locations' catalogs.
+        const allowed = req.principal?.location_ids;
+        if (allowed && allowed !== "all" && !allowed.includes(locationId)) {
+            res.status(403).json({ message: "Forbidden" });
+            return;
+        }
+
         let items: Item[] = [];
         const fetched = await getItemsByLocationID(locationId);
         if (Array.isArray(fetched)) items = fetched;
@@ -65,9 +89,11 @@ itemRouter.get(
         let items: Item[] = [];
 
         logger.debug(
-            "No locationID provided, fetching items for all locations.",
+            "No locationID provided, fetching items for the principal's locations.",
         );
-        const fetched = await getItemsByLocationID();
+        const fetched = await itemsForLocations(
+            req.principal?.location_ids ?? [],
+        );
         if (Array.isArray(fetched)) items = fetched;
 
         res.json(items);

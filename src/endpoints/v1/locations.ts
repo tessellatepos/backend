@@ -15,13 +15,19 @@ export const locationsv1Endpoint: ITessellateApiRouter = {
 };
 
 // Reads the persisted locations, so it works for any provider, unlike
-// Square's own locations list.
+// Square's own locations list. A location-pinned principal sees only its own.
 locationRouter.get(
     "/",
     requireScope("locations:read"),
-    async (_req: Request, res: Response) => {
+    async (req: Request, res: Response) => {
         try {
-            res.json(await getLocations());
+            const allowed = req.principal?.location_ids ?? [];
+            const locations = await getLocations();
+            res.json(
+                allowed === "all"
+                    ? locations
+                    : locations.filter((l) => allowed.includes(l.id)),
+            );
         } catch (err) {
             logger.error("Failed to list locations:", err);
             res.status(500).json({ message: "Failed to list locations" });
