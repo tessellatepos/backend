@@ -1,11 +1,10 @@
-import { eq } from "drizzle-orm";
 import type {
     Address,
     CurrencyCode,
     Location,
     LocationHours,
 } from "@tessellatepos/sdk";
-import { drizzleDB } from "@/services/db/postgres";
+import { createLocalStore, emptyIfNull, nullIfEmpty } from "@/services/store";
 import { locationsTable } from "./schema";
 
 const EMPTY_HOURS: LocationHours = {
@@ -29,24 +28,51 @@ function rowToLocation(row: typeof locationsTable.$inferSelect): Location {
         name: row.name,
         address: row.address as Address,
         currency: row.currency as CurrencyCode,
-        phone_number: row.phoneNumber ?? "",
-        website_url: row.websiteUrl ?? "",
-        email: row.email ?? "",
+        phone_number: emptyIfNull(row.phoneNumber),
+        website_url: emptyIfNull(row.websiteUrl),
+        email: emptyIfNull(row.email),
         hours: (row.hours as LocationHours | null) ?? EMPTY_HOURS,
-        logo_url: row.logoUrl ?? "",
+        logo_url: emptyIfNull(row.logoUrl),
     };
 }
+
+/**
+ * Converts a Location into a locations row.
+ * @param location the location
+ * @returns the row to persist
+ */
+function locationToRow(location: Location): typeof locationsTable.$inferInsert {
+    return {
+        id: location.id,
+        name: location.name,
+        address: location.address,
+        currency: location.currency,
+        phoneNumber: nullIfEmpty(location.phone_number),
+        websiteUrl: nullIfEmpty(location.website_url),
+        email: nullIfEmpty(location.email),
+        hours: location.hours,
+        logoUrl: nullIfEmpty(location.logo_url),
+    };
+}
+
+/**
+ * The persisted locations, whichever provider supplied them. Locations a
+ * provider stops returning are soft deleted by syncResource.
+ */
+export const locationStore = createLocalStore({
+    table: locationsTable,
+    toRow: locationToRow,
+    fromRow: rowToLocation,
+    searchColumns: [locationsTable.name, locationsTable.email],
+    orderBy: locationsTable.name,
+});
 
 /**
  * Lists the persisted locations, whichever provider supplied them.
  * @returns the locations, sorted by name
  */
 export async function getLocations(): Promise<Location[]> {
-    const rows = await drizzleDB
-        .select()
-        .from(locationsTable)
-        .orderBy(locationsTable.name);
-    return rows.map(rowToLocation);
+    return (await locationStore.list()).items;
 }
 
 /**
@@ -55,41 +81,5 @@ export async function getLocations(): Promise<Location[]> {
  * @returns the location, or null if it doesn't exist
  */
 export async function getLocationById(id: string): Promise<Location | null> {
-    const [row] = await drizzleDB
-        .select()
-        .from(locationsTable)
-        .where(eq(locationsTable.id, id))
-        .limit(1);
-    return row ? rowToLocation(row) : null;
-}
-
-/**
- * Upserts locations fetched from a provider. Locations missing from the
- * import are kept, so orders and devices referencing them still resolve.
- * @param locations the locations fetched from a provider
- */
-export async function importLocationsFromProvider(
-    locations: Location[],
-): Promise<void> {
-    await drizzleDB.transaction(async (tx) => {
-        for (const location of locations) {
-            const values = {
-                name: location.name,
-                address: location.address,
-                currency: location.currency,
-                phoneNumber: location.phone_number || null,
-                websiteUrl: location.website_url || null,
-                email: location.email || null,
-                hours: location.hours,
-                logoUrl: location.logo_url || null,
-            };
-            await tx
-                .insert(locationsTable)
-                .values({ id: location.id, ...values })
-                .onConflictDoUpdate({
-                    target: locationsTable.id,
-                    set: { ...values, updatedAt: new Date() },
-                });
-        }
-    });
+    return locationStore.get(id);
 }

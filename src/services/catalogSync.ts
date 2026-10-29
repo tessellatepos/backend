@@ -5,7 +5,8 @@ import {
     getCatalogByLocation,
     importCatalogFromProvider,
 } from "@/services/db/catalog";
-import { importLocationsFromProvider } from "@/services/db/locations";
+import { locationStore } from "@/services/db/locations";
+import { syncResource } from "@/services/store";
 
 const logger = new Logger();
 
@@ -24,7 +25,11 @@ export async function updateCatalogInCache() {
 
     logger.debug("updateCatalogInCache");
 
-    await importLocationsFromProvider(await activeProvider.fetchLocations());
+    await syncResource({
+        name: "locations",
+        fetchRemote: () => activeProvider.fetchLocations(),
+        store: locationStore,
+    });
 
     const providerCatalog = await activeProvider.fetchCatalog();
     await importCatalogFromProvider(providerCatalog);
