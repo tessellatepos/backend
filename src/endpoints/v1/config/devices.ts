@@ -15,12 +15,56 @@ import { type IConfigDevice } from "@tessellatepos/sdk";
 import { getParamValue } from "@/utils/expressHelpers";
 import { requireScope } from "@/middleware/authenticate";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
+import { FixedWindowLimiter, rateLimit } from "@/utils/rateLimiter";
+import { deviceTypeEnum } from "@/services/db/schema";
 import { activeProvider } from "@/services/providers";
+
+const DEVICE_TYPES = deviceTypeEnum.enumValues;
 
 const configDeviceRouter: Router = express.Router();
 
 const logger = new Logger();
 
+/** Length of every pairing rate-limit window. */
+export const PAIRING_WINDOW_MS = 15 * 60 * 1000;
+/** Pairing codes a client IP may request (GET /pair-device/) per window. */
+export const PAIR_REQUEST_MAX = 20;
+/** Code refreshes a client IP may make (GET /pair-device/:code) per window. */
+export const PAIR_REFRESH_MAX = 20;
+/** Approvals a client IP may make (PUT /pair-device/:code) per window. */
+export const PAIR_APPROVE_MAX = 30;
+
+// Limits are per process (see FixedWindowLimiter) and keyed by req.ip.
+const requestLimiter = new FixedWindowLimiter(
+    PAIR_REQUEST_MAX,
+    PAIRING_WINDOW_MS,
+);
+const refreshLimiter = new FixedWindowLimiter(
+    PAIR_REFRESH_MAX,
+    PAIRING_WINDOW_MS,
+);
+const approveLimiter = new FixedWindowLimiter(
+    PAIR_APPROVE_MAX,
+    PAIRING_WINDOW_MS,
+);
+
+/** Clears the pairing rate limits (tests). */
+export function resetPairingLimits(): void {
+    requestLimiter.reset();
+    refreshLimiter.reset();
+    approveLimiter.reset();
+}
+
+// Pairing policy
+//  - Requesting a code (GET /pair-device/) is public, because a device has no
+//    credentials yet, and is rate limited per IP. So is refreshing a code
+//    (GET /pair-device/:code), which also needs the current code.
+//  - Approving a pairing (PUT /pair-device/:code) needs devices:admin and is
+//    rate limited too. Deleting a pairing and every other device mutation
+//    need devices:admin.
+//  - The token exchange (POST /auth/device-token) needs the device's live
+//    pairing code or devices:admin, and failed attempts are rate limited.
+// The pairing code is a one-time secret: it is never written to a log line.
 export const configDevicev1Endpoint: ITessellateApiRouter = {
     route_path: "/config/devices",
     version: "v1",
@@ -33,14 +77,19 @@ configDeviceRouter.get("/", requireScope("devices:read"), async (req, res) => {
     res.json(configSystems.map(withoutTokenHash));
 });
 
-configDeviceRouter.get("/pair-device/", async (req: Request, res: Response) => {
-    logger.info(`Received GET request for a new pairing device`);
-    const config = await createConfigDevice();
-    res.json(config);
-});
+configDeviceRouter.get(
+    "/pair-device/",
+    rateLimit(requestLimiter),
+    async (req: Request, res: Response) => {
+        logger.info(`Received GET request for a new pairing device`);
+        const config = await createConfigDevice();
+        res.json(config);
+    },
+);
 
 configDeviceRouter.get(
     "/pair-device/:pairingCode",
+    rateLimit(refreshLimiter),
     async (req: Request, res: Response) => {
         const pairingCode = getParamValue(req.params.pairingCode);
 
@@ -51,12 +100,10 @@ configDeviceRouter.get(
             return;
         }
 
-        logger.info(
-            `Received GET request for pairing device with paring code: ${pairingCode}`,
-        );
         const config = await getConfigDeviceByPairingCode(pairingCode);
 
         if (config) {
+            logger.info(`Refreshing the pairing code of device ${config.id}`);
             const newConfig = {
                 id: config.id,
                 created_at: config.created_at,
@@ -91,7 +138,7 @@ configDeviceRouter.delete(
         }
 
         logger.info(
-            `Received DELETE request for pairing device with paring code: ${deviceId}`,
+            `Received DELETE request for the pairing of device ${deviceId}`,
         );
         await deleteConfigDevice(deviceId);
         const checkDeleteDevice = await getConfigDeviceByID(deviceId);
@@ -111,6 +158,7 @@ configDeviceRouter.delete(
 configDeviceRouter.put(
     "/pair-device/:pairingCode",
     requireScope("devices:admin"),
+    rateLimit(approveLimiter),
     async (req: Request, res: Response) => {
         const pairingCode = getParamValue(req.params.pairingCode);
 
@@ -121,18 +169,35 @@ configDeviceRouter.put(
             return;
         }
 
-        logger.info(
-            `Received PUT request for pairing device with ID: ${pairingCode} and body: ${JSON.stringify(req.body)}`,
-        );
-        const dbConfig = await getConfigDeviceByPairingCode(pairingCode);
+        const updatedConfig = (
+            req.body && typeof req.body === "object" ? req.body : {}
+        ) as Partial<IConfigDevice>;
 
-        const updatedConfig = req.body as Partial<IConfigDevice>;
-
-        if (!updatedConfig.device_hardware_id) {
+        if (
+            typeof updatedConfig.device_hardware_id !== "string" ||
+            !updatedConfig.device_hardware_id.trim()
+        ) {
             res.status(400).json({
-                message: "Missing device_hardware_id in request body",
+                message: "device_hardware_id must be a non-empty string",
             });
             return;
+        }
+        if (
+            updatedConfig.device_type !== undefined &&
+            updatedConfig.device_type !== null &&
+            !(DEVICE_TYPES as readonly unknown[]).includes(
+                updatedConfig.device_type,
+            )
+        ) {
+            res.status(400).json({
+                message: `device_type must be one of ${DEVICE_TYPES.join(", ")}`,
+            });
+            return;
+        }
+
+        const dbConfig = await getConfigDeviceByPairingCode(pairingCode);
+        if (dbConfig) {
+            logger.info(`Received PUT request to pair device ${dbConfig.id}`);
         }
 
         if (dbConfig != undefined && !dbConfig.paired_at) {
@@ -189,9 +254,8 @@ configDeviceRouter.post(
             return;
         }
 
-        logger.info(
-            `Received POST request for device ID: ${deviceId} with body: ${JSON.stringify(req.body)}`,
-        );
+        // The body can carry a pairing code, so it is not logged.
+        logger.info(`Received POST request for device ID: ${deviceId}`);
         // Never let a request body set or clear the device token hash.
         const updatedConfig = withoutTokenHash(req.body as IConfigDevice);
         await updateConfigDevice(deviceId, updatedConfig);
