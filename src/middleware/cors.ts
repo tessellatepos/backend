@@ -1,6 +1,6 @@
 import cors from "cors";
 import type { NextFunction, Request, Response } from "express";
-import { urlConfig, type UrlConfig } from "@/config/urls";
+import { isDevLocalOrigin, urlConfig, type UrlConfig } from "@/config/urls";
 
 /**
  * Whether a browser Origin is one this deployment serves: same host as the
@@ -18,7 +18,9 @@ export function isOriginAllowed(
     if (!origin) return false;
     try {
         return (
-            config.corsOrigins.includes(origin) || new URL(origin).host === host
+            config.corsOrigins.includes(origin) ||
+            (config.allowDevOrigins && isDevLocalOrigin(origin)) ||
+            new URL(origin).host === host
         );
     } catch {
         return false;
@@ -27,8 +29,8 @@ export function isOriginAllowed(
 
 /**
  * Per-surface CORS. Internal routes allow same-origin requests plus the
- * configured origins (PUBLIC_URL, and the Vite dev origin outside
- * production). /gateway/* and /webhooks/* get no CORS headers here; the
+ * configured origins (PUBLIC_URL) and, outside production, any local dev
+ * origin (localhost / 127.0.0.1 on any port). /gateway/* and /webhooks/* get no CORS headers here; the
  * gateway adds its own later.
  * @param config the configuration to enforce
  * @returns an Express middleware
