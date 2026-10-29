@@ -8,6 +8,7 @@ import {
     createOwner,
     createStore,
     getSetupStatus,
+    verifySetupToken,
 } from "@/services/setup";
 import { isRateLimited, recordFailure } from "@/services/setupToken";
 
@@ -67,6 +68,25 @@ setupRouter.post("/owner", async (req: Request, res: Response) => {
             recordFailure(key);
         }
         fail(res, err, "Creating the owner");
+    }
+});
+
+// Pre-check for the wizard: 204 when the token is right, nothing is created.
+// A wrong token is a failure on the same per-IP limiter as POST /owner.
+setupRouter.post("/verify-token", async (req: Request, res: Response) => {
+    const key = req.ip ?? "unknown";
+    if (isRateLimited(key)) {
+        res.status(429).json({ message: "Too many failed attempts" });
+        return;
+    }
+    try {
+        await verifySetupToken(body(req).setupToken);
+        res.status(204).end();
+    } catch (err) {
+        if (err instanceof SetupError && err.status === 403) {
+            recordFailure(key);
+        }
+        fail(res, err, "Verifying the setup token");
     }
 });
 

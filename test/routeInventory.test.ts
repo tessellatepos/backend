@@ -37,6 +37,7 @@ const PUBLIC = [
     // first run and sign-in
     "GET /api/v1/setup/status",
     "POST /api/v1/setup/owner",
+    "POST /api/v1/setup/verify-token",
     "ALL /api/v1/auth/*splat",
     "GET /api/v1/auth-providers/public",
     // a device proves pairing in the body

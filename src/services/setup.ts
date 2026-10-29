@@ -54,6 +54,7 @@ export interface OwnerInput {
 export type SetupErrorCode =
     | "SETUP_COMPLETE"
     | "USER_EXISTS"
+    | "BAD_TOKEN"
     | "PROVIDER_SQUARE"
     | "STORE_EXISTS"
     | "MISSING_STEPS";
@@ -173,6 +174,28 @@ export function parseOwnerInput(
         );
     }
     return { name, username, email, password };
+}
+
+/**
+ * Checks a setup token without creating anything, so the wizard can reject a
+ * wrong token before the owner form is filled in. Same checks, in the same
+ * order, as {@link createOwner} before it reads the form.
+ * @param token the setup token the caller supplied
+ * @throws SetupError 403 (wrong or missing token), 409 (user exists / complete)
+ */
+export async function verifySetupToken(token: unknown): Promise<void> {
+    if (await isSetupComplete()) {
+        throw new SetupError(
+            409,
+            "Setup is already complete",
+            "SETUP_COMPLETE",
+        );
+    }
+    if (await hasUsers())
+        throw new SetupError(409, "An owner already exists", "USER_EXISTS");
+    if (!setupTokenMatches(token)) {
+        throw new SetupError(403, "Invalid setup token", "BAD_TOKEN");
+    }
 }
 
 /**

@@ -126,6 +126,56 @@ describe("first-run setup API", () => {
         assert.ok(!wrong.text.includes(TOKEN));
     });
 
+    it("verifies the token without creating anything", async () => {
+        const ok = await call("/verify-token", { body: { setupToken: TOKEN } });
+        assert.equal(ok.res.status, 204);
+        assert.equal(ok.text, "");
+        const { rows } = await pool.query(
+            `SELECT 1 FROM "tessellate-auth-user"`,
+        );
+        assert.equal(rows.length, 0);
+
+        for (const bad of [{ setupToken: "nope" }, {}, { setupToken: 5 }]) {
+            const r = await call("/verify-token", { body: bad });
+            assert.equal(r.res.status, 403, JSON.stringify(bad));
+            assert.equal(r.json.code, "BAD_TOKEN");
+            assert.ok(!r.text.includes(TOKEN));
+        }
+    });
+
+    it("shares the failure limiter between verify-token and owner", async () => {
+        const ip = "10.0.0.77";
+        for (let i = 0; i < 6; i++) {
+            const r = await call("/verify-token", {
+                body: { setupToken: "wrong" },
+                ip,
+            });
+            assert.equal(r.res.status, 403);
+        }
+        for (let i = 0; i < 4; i++) {
+            const r = await call("/owner", {
+                body: owner({ setupToken: "wrong" }),
+                ip,
+            });
+            assert.equal(r.res.status, 403);
+        }
+        const blocked = await call("/verify-token", {
+            body: { setupToken: TOKEN },
+            ip,
+        });
+        assert.equal(blocked.res.status, 429);
+        assert.ok(blocked.json.message);
+        // a correct token never counts as a failure
+        const other = "10.0.0.78";
+        for (let i = 0; i < 12; i++) {
+            const r = await call("/verify-token", {
+                body: { setupToken: TOKEN },
+                ip: other,
+            });
+            assert.equal(r.res.status, 204);
+        }
+    });
+
     it("rejects invalid input with 400", async () => {
         for (const bad of [
             { password: "short" },
@@ -199,6 +249,9 @@ describe("first-run setup API", () => {
         });
         assert.equal(r.res.status, 409);
         assert.equal(r.json.code, "USER_EXISTS");
+        const v = await call("/verify-token", { body: { setupToken: TOKEN } });
+        assert.equal(v.res.status, 409);
+        assert.equal(v.json.code, "USER_EXISTS");
     });
 
     it("flips the owner step in the status", async () => {
@@ -317,6 +370,11 @@ describe("first-run setup API", () => {
             (await call("/owner", { body: owner() })).json,
             locked,
         );
+        const verify = await call("/verify-token", {
+            body: { setupToken: TOKEN },
+        });
+        assert.equal(verify.res.status, 409);
+        assert.deepEqual(verify.json, locked);
         assert.equal((await call("/owner", { body: owner() })).res.status, 409);
         const store = await call("/store", {
             body: { name: "S", address: ADDRESS, currency: "CAD" },
