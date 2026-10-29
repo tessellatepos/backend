@@ -257,6 +257,7 @@ describe("route inventory", () => {
             ["viewer", "GET", "/api/v1/config/settings", "settings:read"],
             ["viewer", "POST", "/api/v1/customers", "customers:write"],
             ["viewer", "PUT", "/api/v1/customers/x", "customers:write"],
+            ["viewer", "PATCH", "/api/v1/customers/x", "customers:write"],
             ["viewer", "DELETE", "/api/v1/customers/x", "customers:write"],
             ["cashier", "GET", "/api/v1/items/update/", "catalog:write"],
             ["viewer", "POST", "/api/v1/orders/create", "orders:write"],

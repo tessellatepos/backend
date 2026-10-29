@@ -25,7 +25,7 @@ import type {
     TessellatePluginRegistry,
 } from "@/utils/registry/plugin/pluginRegistry";
 
-// Guards: customers:read for GET, customers:write for POST/PUT/DELETE.
+// Guards: customers:read for GET, customers:write for POST/PUT/PATCH/DELETE.
 const customerRouter: Router = express.Router();
 
 const logger = new Logger();
@@ -83,8 +83,9 @@ async function prepareInput(
     req: Request,
     res: Response,
     existingId?: string,
+    raw: unknown = req.body,
 ): Promise<CustomerInput | null> {
-    const customer = validateCustomerInput(req.body);
+    const customer = validateCustomerInput(raw);
     // The hook takes { customer, existingId } but returns a CustomerInput, so
     // each handler's output is re-wrapped for the next one.
     let modified: CustomerInput | undefined;
@@ -184,6 +185,49 @@ customerRouter.put(
                 return;
             }
             const input = await prepareInput(req, res, id);
+            if (!input) return;
+            const customer = await updateCustomer(id, input);
+            if (!customer) {
+                res.status(404).json({ message: "Customer not found" });
+                return;
+            }
+            getPluginRegistry(req).emitTo(
+                CUSTOMER_ONLY,
+                events.customerUpdated,
+                customer,
+                previous,
+            );
+            res.json(customer);
+        } catch (error) {
+            fail(res, error, "update customer", id);
+        }
+    },
+);
+
+// PUT replaces the whole record: fields missing from the body are cleared.
+// PATCH merges: only the fields present in the body change, the rest keep
+// their stored values (send null or "" to clear one). Both then share the
+// validation, beforeCustomerSave hook, write-through update and
+// customerUpdated event.
+customerRouter.patch(
+    "/:id",
+    requireScope("customers:write"),
+    async (req: Request<{ id: string }>, res) => {
+        const { id } = req.params;
+        try {
+            const previous = await getCustomer(id);
+            if (!previous) {
+                res.status(404).json({ message: "Customer not found" });
+                return;
+            }
+            const patch: unknown = req.body;
+            const isObject =
+                typeof patch === "object" &&
+                patch !== null &&
+                !Array.isArray(patch);
+            // A non-object body is passed on so validation rejects it.
+            const merged = isObject ? { ...previous, ...patch } : patch;
+            const input = await prepareInput(req, res, id, merged);
             if (!input) return;
             const customer = await updateCustomer(id, input);
             if (!customer) {

@@ -104,6 +104,92 @@ describe("customers endpoints", () => {
         );
     });
 
+    it("PATCH merges while PUT replaces", async () => {
+        const id = (await app.request("POST", "/customers", ada)).body
+            .id as string;
+
+        const patched = await app.request("PATCH", `/customers/${id}`, {
+            given_name: "Augusta",
+        });
+        assert.equal(patched.status, 200);
+        assert.equal(patched.body.given_name, "Augusta");
+        assert.equal(patched.body.family_name, "Lovelace");
+        assert.equal(patched.body.email, "ada@example.test");
+        assert.equal(patched.body.phone_number, "+1 555 0100");
+        const got = await app.request("GET", `/customers/${id}`);
+        assert.equal(got.body.email, "ada@example.test");
+        assert.ok(got.body.tags.includes("vip"));
+
+        const cleared = await app.request("PATCH", `/customers/${id}`, {
+            email: null,
+        });
+        assert.equal(cleared.body.email, "");
+        assert.equal(cleared.body.family_name, "Lovelace");
+
+        const replaced = await app.request("PUT", `/customers/${id}`, {
+            given_name: "Only",
+        });
+        assert.equal(replaced.status, 200);
+        assert.equal(replaced.body.given_name, "Only");
+        assert.equal(replaced.body.family_name, "");
+        assert.equal(replaced.body.email, "");
+    });
+
+    it("PATCH answers 404 and 400 without echoing values", async () => {
+        assert.equal(
+            (await app.request("PATCH", "/customers/nope", { note: "x" }))
+                .status,
+            404,
+        );
+        const id = (await app.request("POST", "/customers", ada)).body
+            .id as string;
+        const bad = await app.request("PATCH", `/customers/${id}`, {
+            email: "secret-not-an-email",
+        });
+        assert.equal(bad.status, 400);
+        assert.match(bad.body.message, /email is not valid/);
+        assert.ok(!JSON.stringify(bad.body).includes("secret-not-an-email"));
+        const notObject = await app.request("PATCH", `/customers/${id}`, [1]);
+        assert.equal(notObject.status, 400);
+        assert.equal(
+            (await app.request("GET", `/customers/${id}`)).body.email,
+            "ada@example.test",
+        );
+    });
+
+    it("PATCH runs the hook and emits the update event once", async () => {
+        const id = (await app.request("POST", "/customers", ada)).body
+            .id as string;
+        await settle();
+        for (const key of Object.keys(seen)) delete seen[key];
+
+        const res = await app.request("PATCH", `/customers/${id}`, {
+            given_name: "Augusta",
+        });
+        assert.equal(res.status, 200);
+        await settle();
+        assert.equal(seen["allowed:hook"].length, 1);
+        const [hookInput] = seen["allowed:hook"][0] as [
+            {
+                customer: { given_name: string; email: string };
+                existingId: string;
+            },
+        ];
+        assert.equal(hookInput.existingId, id);
+        assert.equal(hookInput.customer.given_name, "Augusta");
+        assert.equal(hookInput.customer.email, "ada@example.test");
+        assert.equal(seen["allowed:updated"].length, 1);
+        assert.equal(seen["denied:updated"], undefined);
+        assert.equal(seen["denied:hook"], undefined);
+
+        blockReason = "nope";
+        const blocked = await app.request("PATCH", `/customers/${id}`, {
+            note: "x",
+        });
+        assert.equal(blocked.status, 400);
+        assert.equal(blocked.body.message, "nope");
+    });
+
     it("searches by text and filters, and pages", async () => {
         for (const given_name of ["Ann", "Bob", "Cy", "Di", "Ed"]) {
             await app.request("POST", "/customers", {
