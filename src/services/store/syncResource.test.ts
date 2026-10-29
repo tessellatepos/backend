@@ -35,6 +35,25 @@ describe("syncResource", () => {
         assert.equal(rows.rowCount, 2);
     });
 
+    it("keeps records the remote stopped returning when removeMissing is off", async () => {
+        const sync = (remote: Location[]) =>
+            syncResource({
+                name: "locations",
+                fetchRemote: async () => remote,
+                store: locationStore,
+                removeMissing: false,
+            });
+        await sync([makeLocation("L1", "One"), makeLocation("L2", "Two")]);
+        const result = await sync([makeLocation("L1", "One")]);
+
+        assert.equal(result.removed, 0);
+        assert.deepEqual(
+            (await locationStore.list()).items.map((l) => l.id),
+            ["L1", "L2"],
+        );
+        assert.ok(await locationStore.get("L2"));
+    });
+
     it("soft deletes a record removed remotely and it leaves list and get", async () => {
         const sync = (remote: Location[]) =>
             syncResource({

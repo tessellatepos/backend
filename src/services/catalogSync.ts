@@ -26,6 +26,8 @@ export async function updateCatalogInCache() {
         name: "locations",
         fetchRemote: () => activeProvider.fetchLocations(),
         store: locationStore,
+        // orders and devices keep referencing a location a provider drops
+        removeMissing: false,
     });
 
     await syncResource({
