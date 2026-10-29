@@ -6,6 +6,7 @@ import { type Item } from "@tessellatepos/sdk";
 import { Logger } from "tslog";
 import { updateCatalogInCache } from "@/services/catalogSync";
 import { getParamValue } from "@/utils/expressHelpers";
+import { requireLocation, requireScope } from "@/middleware/authenticate";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 
 const itemRouter: Router = express.Router();
@@ -22,6 +23,7 @@ export const itemsv1Endpoint: ITessellateApiRouter = {
 
 itemRouter.get(
     "/by-device-id/:deviceId",
+    requireScope("catalog:read"),
     async (req: Request, res: Response) => {
         const deviceId = getParamValue(req.params.deviceId);
 
@@ -56,23 +58,31 @@ itemRouter.get(
     },
 );
 
-itemRouter.get("/by-location/", async (req: Request, res: Response) => {
-    let items: Item[] = [];
+itemRouter.get(
+    "/by-location/",
+    requireScope("catalog:read"),
+    async (req: Request, res: Response) => {
+        let items: Item[] = [];
 
-    logger.debug("No locationID provided, fetching items for all locations.");
-    const fetched = await getItemsByLocationID();
-    if (Array.isArray(fetched)) items = fetched;
+        logger.debug(
+            "No locationID provided, fetching items for all locations.",
+        );
+        const fetched = await getItemsByLocationID();
+        if (Array.isArray(fetched)) items = fetched;
 
-    res.json(items);
+        res.json(items);
 
-    // Placeholder: implement logic to return items for a specific location when locationID is set,
-    // or return items across all locations (or apply a default) when locationID is undefined.
-    // For now, respond with a simple JSON to show behavior.
-    // res.json({ locationID: locationID ?? null, message: locationID ? "Filtered by location" : "No location provided - returning default/all items" });
-});
+        // Placeholder: implement logic to return items for a specific location when locationID is set,
+        // or return items across all locations (or apply a default) when locationID is undefined.
+        // For now, respond with a simple JSON to show behavior.
+        // res.json({ locationID: locationID ?? null, message: locationID ? "Filtered by location" : "No location provided - returning default/all items" });
+    },
+);
 
 itemRouter.get(
     "/by-location/:locationId",
+    requireScope("catalog:read"),
+    requireLocation((req) => req.params.locationId as string),
     async (req: Request<{ locationId: string }>, res: Response) => {
         const locationId = req.params.locationId;
 
@@ -102,7 +112,11 @@ itemRouter.get(
 
 // itemRouter.get("/items/variations/by-id", async (req: Request, res: Response) => {});
 
-itemRouter.get("/update/", async (req: Request, res: Response) => {
-    await updateCatalogInCache();
-    res.json({ message: "Catalog update triggered" });
-});
+itemRouter.get(
+    "/update/",
+    requireScope("catalog:write"),
+    async (req: Request, res: Response) => {
+        await updateCatalogInCache();
+        res.json({ message: "Catalog update triggered" });
+    },
+);

@@ -1,4 +1,4 @@
-import express from "express";
+import { createApp, mountApiRoutes } from "@/app";
 import { getRedisClient } from "@/services/redis";
 import { pool, runMigrations } from "@/services/db/postgres";
 import {
@@ -9,33 +9,13 @@ import { Logger } from "tslog";
 import * as http from "node:http";
 import { setupWebSocket } from "@/services/websocket/websocket";
 import { refreshIfNeeded } from "@/services/squareOauth";
-import { routes } from "@/utils/registry/api/routes";
-import { TessellateApiRegistry } from "@/utils/registry/api/apiRegistry";
 import { TessellatePluginRegistry } from "@/utils/registry/plugin/pluginRegistry";
 import { loadPlugins } from "@/plugin/lifecycle/lifecycleManager";
 import { rebuildAuth } from "@/services/authProviders";
 import { hasUsers } from "@/services/setup";
 import { initSetupToken } from "@/services/setupToken";
-import { urlConfig } from "@/config/urls";
-import { hostGuard } from "@/middleware/hostGuard";
-import { surfaceMiddleware } from "@/middleware/surface";
-import { surfaceCors } from "@/middleware/cors";
-import { authenticate } from "@/middleware/authenticate";
 
-const app = express();
-app.set("trust proxy", urlConfig.trustProxy);
-
-app.use(hostGuard());
-app.use(surfaceMiddleware);
-app.use(surfaceCors());
-app.use(express.json());
-// Resolves req.principal; guards (requireScope) decide what to reject.
-app.use(authenticate);
-
-// Public, minimal liveness probe. Reachable on the public host.
-app.get("/health", (_req, res) => {
-    res.json({ status: "ok" });
-});
+const app = createApp();
 
 const logger = new Logger();
 
@@ -43,10 +23,6 @@ async function start() {
     try {
         const pluginRegistry = new TessellatePluginRegistry();
         await loadPlugins(pluginRegistry);
-        const apiRegistry = new TessellateApiRegistry(
-            app,
-            pluginRegistry.apiRegistry,
-        );
         logger.debug("Loaded plugins:", [
             ...pluginRegistry.getPlugins().keys(),
         ]);
@@ -92,10 +68,7 @@ async function start() {
         // register all the routes in routes.ts and load them all in.
         // This process should be the last thing before the server loads
         // to ensure that plugin routes are loaded
-        for (const route of routes) {
-            apiRegistry.registerRouter(route);
-        }
-        apiRegistry.loadRoutes();
+        mountApiRoutes(app, pluginRegistry.apiRegistry);
 
         const httpServer = http.createServer(app);
         setupWebSocket(httpServer);

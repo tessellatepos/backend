@@ -2,6 +2,7 @@ import "@/test/localProvider";
 import express from "express";
 import { customersv1Endpoint } from "@/endpoints/v1/customers";
 import { ordersv1Endpoint } from "@/endpoints/v1/orders";
+import "@/middleware/authenticate";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import type { TessellatePluginRegistry } from "@/utils/registry/plugin/pluginRegistry";
@@ -29,6 +30,18 @@ export async function startTestApp(
 ): Promise<TestApp> {
     const app = express();
     app.use(express.json());
+    // These tests are about customers and orders, not auth: act as the owner.
+    app.use((req, _res, next) => {
+        req.principal = {
+            kind: "user",
+            id: "test-owner",
+            display_name: "Test Owner",
+            roles: ["owner"],
+            scopes: ["*"],
+            location_ids: "all",
+        };
+        next();
+    });
     app.locals.pluginRegistry = pluginRegistry;
     app.use("/customers", customersv1Endpoint.router);
     app.use("/orders", ordersv1Endpoint.router);

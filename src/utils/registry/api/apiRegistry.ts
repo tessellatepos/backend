@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import type { Express, RequestHandler } from "express";
 import { Logger } from "tslog";
+import { requireAuthenticated } from "@/middleware/authenticate";
 import { TessellatePluginApiRegistry } from "@/utils/registry/api/pluginApiRegistry";
 
 const logger = new Logger();
@@ -55,7 +56,13 @@ export class TessellateApiRegistry {
 
         logger.debug("Loading Plugin API dispatcher");
         // Scoped by pluginName so a plugin can only hit its own API mounts.
-        this.app.use("/plugins/:pluginName", this.pluginApiRegistry.dispatch);
+        // The client bundles above stay public; API calls need a principal
+        // (the plugin handler receives it as ctx.principal).
+        this.app.use(
+            "/plugins/:pluginName",
+            requireAuthenticated,
+            this.pluginApiRegistry.dispatch,
+        );
     }
 
     private mountAll() {

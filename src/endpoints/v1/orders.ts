@@ -1,4 +1,4 @@
-import express, { Router } from "express";
+import express, { type Request, type Response, Router } from "express";
 import { Logger } from "tslog";
 import { activeProvider } from "@/services/providers";
 import { getPairedDeviceByType } from "@/services/db/configDevice";
@@ -8,6 +8,7 @@ import { bigintReplacer } from "@tessellatepos/sdk";
 import type { Money, Order, TenderType } from "@tessellatepos/sdk";
 import { hooks, events } from "@tessellatepos/plugin-sdk/server";
 import { emitPaymentStatusEvent } from "@/services/websocket/events";
+import { requireLocation, requireScope } from "@/middleware/authenticate";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 import type { TessellatePluginRegistry } from "@/utils/registry/plugin/pluginRegistry";
 
@@ -29,364 +30,408 @@ function getPluginRegistry(req: express.Request): TessellatePluginRegistry {
         .pluginRegistry;
 }
 
-orderRouter.post("/create", async (req, res) => {
-    try {
-        const orderDetails: Order = req.body;
+orderRouter.post(
+    "/create",
+    requireScope("orders:write"),
+    requireLocation((req) => req.body?.locationId),
+    async (req, res) => {
+        try {
+            const orderDetails: Order = req.body;
 
-        logger.debug("orderDetails created", orderDetails);
+            logger.debug("orderDetails created", orderDetails);
 
-        if (!orderDetails || typeof orderDetails !== "object") {
-            res.status(400).json({
-                message: "Missing or invalid order details",
-            });
-            return;
-        }
-
-        if (!Array.isArray(orderDetails.lineItems)) {
-            res.status(400).json({
-                message: "orderDetails.lineItems must be an array",
-            });
-            return;
-        }
-
-        // HOOK: beforeOrderCreate — plugins can modify or block the order
-        const hookResult = await getPluginRegistry(req).runHook(
-            hooks.beforeOrderCreate,
-            orderDetails,
-        );
-        if (!hookResult.ok) {
-            res.status(400).json({ message: hookResult.reason });
-            return;
-        }
-        const modifiedOrderDetails = hookResult.value;
-
-        // An attached customer must exist (checked after the hook, which may
-        // have set or changed it).
-        const customerId = modifiedOrderDetails.customerId;
-        if (customerId !== undefined && customerId !== null) {
-            if (
-                typeof customerId !== "string" ||
-                !(await getCustomer(customerId))
-            ) {
-                res.status(400).json({ message: "Unknown customer" });
+            if (!orderDetails || typeof orderDetails !== "object") {
+                res.status(400).json({
+                    message: "Missing or invalid order details",
+                });
                 return;
             }
+
+            if (!Array.isArray(orderDetails.lineItems)) {
+                res.status(400).json({
+                    message: "orderDetails.lineItems must be an array",
+                });
+                return;
+            }
+
+            // HOOK: beforeOrderCreate — plugins can modify or block the order
+            const hookResult = await getPluginRegistry(req).runHook(
+                hooks.beforeOrderCreate,
+                orderDetails,
+            );
+            if (!hookResult.ok) {
+                res.status(400).json({ message: hookResult.reason });
+                return;
+            }
+            const modifiedOrderDetails = hookResult.value;
+
+            // An attached customer must exist (checked after the hook, which may
+            // have set or changed it).
+            const customerId = modifiedOrderDetails.customerId;
+            if (customerId !== undefined && customerId !== null) {
+                if (
+                    typeof customerId !== "string" ||
+                    !(await getCustomer(customerId))
+                ) {
+                    res.status(400).json({ message: "Unknown customer" });
+                    return;
+                }
+            }
+
+            modifiedOrderDetails.referenceId = crypto.randomUUID();
+
+            const order =
+                await activeProvider.createOrder(modifiedOrderDetails);
+
+            if (order !== null && order !== undefined) {
+                logger.debug("Created order:", order.referenceId);
+                await insertOrder(order);
+
+                // EVENT: orderCreated — plugins react (non-blocking)
+                getPluginRegistry(req).emit(events.orderCreated, order);
+
+                res.status(200)
+                    .header("Content-Type", "application/json")
+                    .send(JSON.stringify(order, bigintReplacer));
+            } else {
+                logger.debug(
+                    "Failed to create order",
+                    JSON.stringify(order, bigintReplacer),
+                );
+                res.status(500).json({ message: "Failed to create order" });
+            }
+        } catch (error) {
+            logger.error("Failed to create order", error);
+            res.status(500).json({ message: "Failed to create order" });
         }
+    },
+);
 
-        modifiedOrderDetails.referenceId = crypto.randomUUID();
+orderRouter.post(
+    "/:orderId/checkout",
+    requireScope("orders:write"),
+    async (
+        req: Request<{ orderId: string; checkoutId: string }>,
+        res: Response,
+    ) => {
+        try {
+            const orderId = req.params.orderId;
 
-        const order = await activeProvider.createOrder(modifiedOrderDetails);
+            if (!activeProvider.createTerminalCheckout) {
+                res.status(400).json({
+                    message:
+                        "Terminal checkout is not supported by this provider",
+                });
+                return;
+            }
 
-        if (order !== null && order !== undefined) {
-            logger.debug("Created order:", order.referenceId);
-            await insertOrder(order);
+            const terminalDevice = await getPairedDeviceByType("TERMINAL");
+            const deviceId = terminalDevice?.square_device_id;
+            if (!deviceId) {
+                logger.error("No Square-paired Terminal device is configured");
+                res.status(500).json({
+                    message: "Terminal device is not paired with Square",
+                });
+                return;
+            }
 
-            // EVENT: orderCreated — plugins react (non-blocking)
-            getPluginRegistry(req).emit(events.orderCreated, order);
+            const order = await activeProvider.fetchOrder(orderId);
+            if (!order || !order.totalMoney) {
+                res.status(404).json({
+                    message: "Order not found or missing total",
+                });
+                return;
+            }
+
+            // HOOK: beforeCheckout — plugins can block checkout (gate)
+            const checkoutResult = await getPluginRegistry(req).runHook(
+                hooks.beforeCheckout,
+                { orderId, amount: order.totalMoney },
+            );
+            if (!checkoutResult.ok) {
+                res.status(400).json({ message: checkoutResult.reason });
+                return;
+            }
+
+            const checkoutId = await activeProvider.createTerminalCheckout(
+                orderId,
+                order.totalMoney,
+                deviceId,
+            );
+
+            if (!checkoutId) {
+                res.status(500).json({
+                    message: "Failed to create terminal checkout",
+                });
+                return;
+            }
+
+            const status =
+                await activeProvider.getTerminalCheckoutStatus?.(checkoutId);
+
+            if (status === "COMPLETED") {
+                const paidOrder = await activeProvider.fetchOrder(orderId);
+                if (paidOrder) {
+                    await syncOrderFromSquare(paidOrder);
+                }
+                emitPaymentStatusEvent({
+                    type: "payment_status",
+                    payload: {
+                        orderId,
+                        status: "COMPLETED",
+                        paymentMethod: "TERMINAL",
+                    },
+                });
+
+                // EVENT: paymentCompleted — plugins react (non-blocking)
+                if (paidOrder) {
+                    getPluginRegistry(req).emit(
+                        events.paymentCompleted,
+                        paidOrder,
+                        "CARD",
+                    );
+                }
+
+                res.status(200)
+                    .header("Content-Type", "application/json")
+                    .send(
+                        JSON.stringify(
+                            { checkoutId, status, order: paidOrder },
+                            bigintReplacer,
+                        ),
+                    );
+                return;
+            }
+
+            res.status(200).json({ checkoutId, status });
+        } catch (error) {
+            logger.error("Failed to checkout order", error);
+            res.status(500).json({ message: "Failed to checkout order" });
+        }
+    },
+);
+
+// Polling this syncs the order and announces the payment, so it is a write.
+orderRouter.get(
+    "/:orderId/checkout/:checkoutId",
+    requireScope("orders:write"),
+    async (
+        req: Request<{ orderId: string; checkoutId: string }>,
+        res: Response,
+    ) => {
+        try {
+            const { checkoutId } = req.params;
+
+            const status =
+                await activeProvider.getTerminalCheckoutStatus?.(checkoutId);
+            if (!status) {
+                res.status(404).json({ message: "Checkout not found" });
+                return;
+            }
+
+            if (status === "COMPLETED") {
+                const paidOrder = await activeProvider.fetchOrder(
+                    req.params.orderId,
+                );
+                if (paidOrder) {
+                    await syncOrderFromSquare(paidOrder);
+                }
+                emitPaymentStatusEvent({
+                    type: "payment_status",
+                    payload: {
+                        orderId: req.params.orderId,
+                        status: "COMPLETED",
+                        paymentMethod: "TERMINAL",
+                    },
+                });
+
+                // EVENT: paymentCompleted — plugins react (non-blocking)
+                if (paidOrder) {
+                    getPluginRegistry(req).emit(
+                        events.paymentCompleted,
+                        paidOrder,
+                        "CARD",
+                    );
+                }
+
+                res.status(200)
+                    .header("Content-Type", "application/json")
+                    .send(
+                        JSON.stringify(
+                            { checkoutId, status, order: paidOrder },
+                            bigintReplacer,
+                        ),
+                    );
+                return;
+            }
+
+            res.status(200).json({ checkoutId, status });
+        } catch (error) {
+            logger.error("Failed to get checkout status", error);
+            res.status(500).json({
+                message: "Failed to get checkout status",
+            });
+        }
+    },
+);
+
+orderRouter.post(
+    "/:orderId/pay-cash",
+    requireScope("orders:write"),
+    async (
+        req: Request<{ orderId: string; checkoutId: string }>,
+        res: Response,
+    ) => {
+        try {
+            const orderId = req.params.orderId;
+            const amountTendered = req.body?.amountTendered;
+
+            if (amountTendered === undefined || amountTendered === null) {
+                res.status(400).json({ message: "Missing amountTendered" });
+                return;
+            }
+
+            const order = await activeProvider.fetchOrder(orderId);
+            if (!order || !order.totalMoney) {
+                res.status(404).json({
+                    message: "Order not found or missing total",
+                });
+                return;
+            }
+
+            // HOOK: beforePayment — plugins can block payment (gate)
+            const payResult = await getPluginRegistry(req).runHook(
+                hooks.beforePayment,
+                { orderId, method: "CASH" as TenderType },
+            );
+            if (!payResult.ok) {
+                res.status(400).json({ message: payResult.reason });
+                return;
+            }
+
+            const tenderedMoney: Money = {
+                amount: BigInt(amountTendered),
+                currency: order.totalMoney.currency,
+            };
+
+            if (tenderedMoney.amount! < order.totalMoney.amount!) {
+                res.status(400).json({
+                    message: "Amount tendered is less than the order total",
+                });
+                return;
+            }
+
+            const changeDue = await activeProvider.payCash(
+                orderId,
+                tenderedMoney,
+                order.totalMoney,
+            );
+
+            const paidOrder = await activeProvider.fetchOrder(orderId);
+            if (!paidOrder) {
+                res.status(500).json({
+                    message:
+                        "Payment may have succeeded but order refetch failed",
+                });
+                return;
+            }
+            await syncOrderFromSquare(paidOrder);
+
+            // EVENT: paymentCompleted — plugins react (non-blocking)
+            getPluginRegistry(req).emit(
+                events.paymentCompleted,
+                paidOrder,
+                "CASH",
+            );
 
             res.status(200)
                 .header("Content-Type", "application/json")
-                .send(JSON.stringify(order, bigintReplacer));
-        } else {
-            logger.debug(
-                "Failed to create order",
-                JSON.stringify(order, bigintReplacer),
-            );
-            res.status(500).json({ message: "Failed to create order" });
+                .send(
+                    JSON.stringify(
+                        { order: paidOrder, changeDue },
+                        bigintReplacer,
+                    ),
+                );
+        } catch (error) {
+            logger.error("Failed to pay with cash", error);
+            res.status(500).json({ message: "Failed to pay with cash" });
         }
-    } catch (error) {
-        logger.error("Failed to create order", error);
-        res.status(500).json({ message: "Failed to create order" });
-    }
-});
+    },
+);
 
-orderRouter.post("/:orderId/checkout", async (req, res) => {
-    try {
-        const orderId = req.params.orderId;
+orderRouter.post(
+    "/:orderId/pay-mobile-reader",
+    requireScope("orders:write"),
+    async (
+        req: Request<{ orderId: string; checkoutId: string }>,
+        res: Response,
+    ) => {
+        try {
+            const orderId = req.params.orderId;
+            const paymentId = req.body?.paymentId;
 
-        if (!activeProvider.createTerminalCheckout) {
-            res.status(400).json({
-                message: "Terminal checkout is not supported by this provider",
-            });
-            return;
-        }
-
-        const terminalDevice = await getPairedDeviceByType("TERMINAL");
-        const deviceId = terminalDevice?.square_device_id;
-        if (!deviceId) {
-            logger.error("No Square-paired Terminal device is configured");
-            res.status(500).json({
-                message: "Terminal device is not paired with Square",
-            });
-            return;
-        }
-
-        const order = await activeProvider.fetchOrder(orderId);
-        if (!order || !order.totalMoney) {
-            res.status(404).json({
-                message: "Order not found or missing total",
-            });
-            return;
-        }
-
-        // HOOK: beforeCheckout — plugins can block checkout (gate)
-        const checkoutResult = await getPluginRegistry(req).runHook(
-            hooks.beforeCheckout,
-            { orderId, amount: order.totalMoney },
-        );
-        if (!checkoutResult.ok) {
-            res.status(400).json({ message: checkoutResult.reason });
-            return;
-        }
-
-        const checkoutId = await activeProvider.createTerminalCheckout(
-            orderId,
-            order.totalMoney,
-            deviceId,
-        );
-
-        if (!checkoutId) {
-            res.status(500).json({
-                message: "Failed to create terminal checkout",
-            });
-            return;
-        }
-
-        const status =
-            await activeProvider.getTerminalCheckoutStatus?.(checkoutId);
-
-        if (status === "COMPLETED") {
-            const paidOrder = await activeProvider.fetchOrder(orderId);
-            if (paidOrder) {
-                await syncOrderFromSquare(paidOrder);
+            if (!paymentId) {
+                res.status(400).json({ message: "Missing paymentId" });
+                return;
             }
+
+            if (!activeProvider.confirmMobileReaderPayment) {
+                res.status(400).json({
+                    message:
+                        "Mobile reader payment is not supported by this provider",
+                });
+                return;
+            }
+
+            // HOOK: beforePayment — plugins can block payment (gate)
+            const payResult = await getPluginRegistry(req).runHook(
+                hooks.beforePayment,
+                { orderId, method: "MOBILE_READER" as TenderType },
+            );
+            if (!payResult.ok) {
+                res.status(400).json({ message: payResult.reason });
+                return;
+            }
+
+            const verified = await activeProvider.confirmMobileReaderPayment(
+                orderId,
+                paymentId,
+            );
+            if (!verified) {
+                res.status(400).json({
+                    message: "Mobile reader payment could not be verified",
+                });
+                return;
+            }
+
+            const order = await activeProvider.fetchOrder(orderId);
+            if (!order) {
+                res.status(404).json({ message: "Order not found" });
+                return;
+            }
+            await syncOrderFromSquare(order);
+
             emitPaymentStatusEvent({
                 type: "payment_status",
                 payload: {
                     orderId,
                     status: "COMPLETED",
-                    paymentMethod: "TERMINAL",
+                    paymentMethod: "MOBILE_READER",
+                    paymentId,
                 },
             });
 
             // EVENT: paymentCompleted — plugins react (non-blocking)
-            if (paidOrder) {
-                getPluginRegistry(req).emit(
-                    events.paymentCompleted,
-                    paidOrder,
-                    "CARD",
-                );
-            }
+            getPluginRegistry(req).emit(events.paymentCompleted, order, "CARD");
 
             res.status(200)
                 .header("Content-Type", "application/json")
-                .send(
-                    JSON.stringify(
-                        { checkoutId, status, order: paidOrder },
-                        bigintReplacer,
-                    ),
-                );
-            return;
-        }
-
-        res.status(200).json({ checkoutId, status });
-    } catch (error) {
-        logger.error("Failed to checkout order", error);
-        res.status(500).json({ message: "Failed to checkout order" });
-    }
-});
-
-orderRouter.get("/:orderId/checkout/:checkoutId", async (req, res) => {
-    try {
-        const { checkoutId } = req.params;
-
-        const status =
-            await activeProvider.getTerminalCheckoutStatus?.(checkoutId);
-        if (!status) {
-            res.status(404).json({ message: "Checkout not found" });
-            return;
-        }
-
-        if (status === "COMPLETED") {
-            const paidOrder = await activeProvider.fetchOrder(
-                req.params.orderId,
-            );
-            if (paidOrder) {
-                await syncOrderFromSquare(paidOrder);
-            }
-            emitPaymentStatusEvent({
-                type: "payment_status",
-                payload: {
-                    orderId: req.params.orderId,
-                    status: "COMPLETED",
-                    paymentMethod: "TERMINAL",
-                },
-            });
-
-            // EVENT: paymentCompleted — plugins react (non-blocking)
-            if (paidOrder) {
-                getPluginRegistry(req).emit(
-                    events.paymentCompleted,
-                    paidOrder,
-                    "CARD",
-                );
-            }
-
-            res.status(200)
-                .header("Content-Type", "application/json")
-                .send(
-                    JSON.stringify(
-                        { checkoutId, status, order: paidOrder },
-                        bigintReplacer,
-                    ),
-                );
-            return;
-        }
-
-        res.status(200).json({ checkoutId, status });
-    } catch (error) {
-        logger.error("Failed to get checkout status", error);
-        res.status(500).json({
-            message: "Failed to get checkout status",
-        });
-    }
-});
-
-orderRouter.post("/:orderId/pay-cash", async (req, res) => {
-    try {
-        const orderId = req.params.orderId;
-        const amountTendered = req.body?.amountTendered;
-
-        if (amountTendered === undefined || amountTendered === null) {
-            res.status(400).json({ message: "Missing amountTendered" });
-            return;
-        }
-
-        const order = await activeProvider.fetchOrder(orderId);
-        if (!order || !order.totalMoney) {
-            res.status(404).json({
-                message: "Order not found or missing total",
-            });
-            return;
-        }
-
-        // HOOK: beforePayment — plugins can block payment (gate)
-        const payResult = await getPluginRegistry(req).runHook(
-            hooks.beforePayment,
-            { orderId, method: "CASH" as TenderType },
-        );
-        if (!payResult.ok) {
-            res.status(400).json({ message: payResult.reason });
-            return;
-        }
-
-        const tenderedMoney: Money = {
-            amount: BigInt(amountTendered),
-            currency: order.totalMoney.currency,
-        };
-
-        if (tenderedMoney.amount! < order.totalMoney.amount!) {
-            res.status(400).json({
-                message: "Amount tendered is less than the order total",
-            });
-            return;
-        }
-
-        const changeDue = await activeProvider.payCash(
-            orderId,
-            tenderedMoney,
-            order.totalMoney,
-        );
-
-        const paidOrder = await activeProvider.fetchOrder(orderId);
-        if (!paidOrder) {
+                .send(JSON.stringify(order, bigintReplacer));
+        } catch (error) {
+            logger.error("Failed to confirm mobile reader payment", error);
             res.status(500).json({
-                message: "Payment may have succeeded but order refetch failed",
+                message: "Failed to confirm mobile reader payment",
             });
-            return;
         }
-        await syncOrderFromSquare(paidOrder);
-
-        // EVENT: paymentCompleted — plugins react (non-blocking)
-        getPluginRegistry(req).emit(events.paymentCompleted, paidOrder, "CASH");
-
-        res.status(200)
-            .header("Content-Type", "application/json")
-            .send(
-                JSON.stringify({ order: paidOrder, changeDue }, bigintReplacer),
-            );
-    } catch (error) {
-        logger.error("Failed to pay with cash", error);
-        res.status(500).json({ message: "Failed to pay with cash" });
-    }
-});
-
-orderRouter.post("/:orderId/pay-mobile-reader", async (req, res) => {
-    try {
-        const orderId = req.params.orderId;
-        const paymentId = req.body?.paymentId;
-
-        if (!paymentId) {
-            res.status(400).json({ message: "Missing paymentId" });
-            return;
-        }
-
-        if (!activeProvider.confirmMobileReaderPayment) {
-            res.status(400).json({
-                message:
-                    "Mobile reader payment is not supported by this provider",
-            });
-            return;
-        }
-
-        // HOOK: beforePayment — plugins can block payment (gate)
-        const payResult = await getPluginRegistry(req).runHook(
-            hooks.beforePayment,
-            { orderId, method: "MOBILE_READER" as TenderType },
-        );
-        if (!payResult.ok) {
-            res.status(400).json({ message: payResult.reason });
-            return;
-        }
-
-        const verified = await activeProvider.confirmMobileReaderPayment(
-            orderId,
-            paymentId,
-        );
-        if (!verified) {
-            res.status(400).json({
-                message: "Mobile reader payment could not be verified",
-            });
-            return;
-        }
-
-        const order = await activeProvider.fetchOrder(orderId);
-        if (!order) {
-            res.status(404).json({ message: "Order not found" });
-            return;
-        }
-        await syncOrderFromSquare(order);
-
-        emitPaymentStatusEvent({
-            type: "payment_status",
-            payload: {
-                orderId,
-                status: "COMPLETED",
-                paymentMethod: "MOBILE_READER",
-                paymentId,
-            },
-        });
-
-        // EVENT: paymentCompleted — plugins react (non-blocking)
-        getPluginRegistry(req).emit(events.paymentCompleted, order, "CARD");
-
-        res.status(200)
-            .header("Content-Type", "application/json")
-            .send(JSON.stringify(order, bigintReplacer));
-    } catch (error) {
-        logger.error("Failed to confirm mobile reader payment", error);
-        res.status(500).json({
-            message: "Failed to confirm mobile reader payment",
-        });
-    }
-});
+    },
+);

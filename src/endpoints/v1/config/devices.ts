@@ -13,6 +13,7 @@ import {
 } from "@/services/db/configDevice";
 import { type IConfigDevice } from "@tessellatepos/sdk";
 import { getParamValue } from "@/utils/expressHelpers";
+import { requireScope } from "@/middleware/authenticate";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 import { activeProvider } from "@/services/providers";
 
@@ -26,7 +27,7 @@ export const configDevicev1Endpoint: ITessellateApiRouter = {
     router: configDeviceRouter,
 };
 
-configDeviceRouter.get("/", async (req, res) => {
+configDeviceRouter.get("/", requireScope("devices:read"), async (req, res) => {
     logger.info("Received GET request for all device configurations");
     const configSystems = await getAllConfigDevices();
     res.json(configSystems.map(withoutTokenHash));
@@ -78,6 +79,7 @@ configDeviceRouter.get(
 
 configDeviceRouter.delete(
     "/pair-device/:deviceId",
+    requireScope("devices:admin"),
     async (req: Request, res: Response) => {
         const deviceId = getParamValue(req.params.deviceId);
 
@@ -108,6 +110,7 @@ configDeviceRouter.delete(
 
 configDeviceRouter.put(
     "/pair-device/:pairingCode",
+    requireScope("devices:admin"),
     async (req: Request, res: Response) => {
         const pairingCode = getParamValue(req.params.pairingCode);
 
@@ -154,70 +157,83 @@ configDeviceRouter.put(
     },
 );
 
-configDeviceRouter.get("/:deviceId", async (req: Request, res: Response) => {
-    const deviceId = getParamValue(req.params.deviceId);
+configDeviceRouter.get(
+    "/:deviceId",
+    requireScope("devices:read"),
+    async (req: Request, res: Response) => {
+        const deviceId = getParamValue(req.params.deviceId);
 
-    if (!deviceId || deviceId === "undefined") {
-        res.status(400).json({
-            message: "Invalid deviceID",
-        });
-        return;
-    }
+        if (!deviceId || deviceId === "undefined") {
+            res.status(400).json({
+                message: "Invalid deviceID",
+            });
+            return;
+        }
 
-    logger.info(`Received GET request for device ID: ${deviceId}`);
-    const config = await getConfigDeviceByID(deviceId);
-    res.json(config && withoutTokenHash(config));
-});
+        logger.info(`Received GET request for device ID: ${deviceId}`);
+        const config = await getConfigDeviceByID(deviceId);
+        res.json(config && withoutTokenHash(config));
+    },
+);
 
-configDeviceRouter.post("/:deviceId", async (req: Request, res: Response) => {
-    const deviceId = getParamValue(req.params.deviceId);
+configDeviceRouter.post(
+    "/:deviceId",
+    requireScope("devices:admin"),
+    async (req: Request, res: Response) => {
+        const deviceId = getParamValue(req.params.deviceId);
 
-    if (!deviceId || deviceId === "undefined") {
-        res.status(400).json({
-            message: "Invalid deviceID",
-        });
-        return;
-    }
+        if (!deviceId || deviceId === "undefined") {
+            res.status(400).json({
+                message: "Invalid deviceID",
+            });
+            return;
+        }
 
-    logger.info(
-        `Received POST request for device ID: ${deviceId} with body: ${JSON.stringify(req.body)}`,
-    );
-    // Never let a request body set or clear the device token hash.
-    const updatedConfig = withoutTokenHash(req.body as IConfigDevice);
-    await updateConfigDevice(deviceId, updatedConfig);
-    res.json(updatedConfig);
-});
+        logger.info(
+            `Received POST request for device ID: ${deviceId} with body: ${JSON.stringify(req.body)}`,
+        );
+        // Never let a request body set or clear the device token hash.
+        const updatedConfig = withoutTokenHash(req.body as IConfigDevice);
+        await updateConfigDevice(deviceId, updatedConfig);
+        res.json(updatedConfig);
+    },
+);
 
-configDeviceRouter.delete("/:deviceId", async (req: Request, res: Response) => {
-    const deviceId = getParamValue(req.params.deviceId);
+configDeviceRouter.delete(
+    "/:deviceId",
+    requireScope("devices:admin"),
+    async (req: Request, res: Response) => {
+        const deviceId = getParamValue(req.params.deviceId);
 
-    if (!deviceId || deviceId === "undefined") {
-        res.status(400).json({
-            message: "Invalid deviceID",
-        });
-        return;
-    }
+        if (!deviceId || deviceId === "undefined") {
+            res.status(400).json({
+                message: "Invalid deviceID",
+            });
+            return;
+        }
 
-    logger.info(`Received DELETE request for device ID: ${deviceId}`);
-    const config = await getConfigDeviceByID(deviceId);
-    if (!config) {
-        res.status(404).json({
-            message: "Device configuration does not exist.",
-        });
-        return;
-    } else {
-        await deleteConfigDevice(deviceId);
-        res.status(200).json({
-            message: "Device configuration deleted successfully",
-        });
-    }
-});
+        logger.info(`Received DELETE request for device ID: ${deviceId}`);
+        const config = await getConfigDeviceByID(deviceId);
+        if (!config) {
+            res.status(404).json({
+                message: "Device configuration does not exist.",
+            });
+            return;
+        } else {
+            await deleteConfigDevice(deviceId);
+            res.status(200).json({
+                message: "Device configuration deleted successfully",
+            });
+        }
+    },
+);
 
 // Pairs a physical Square Terminal to this merchant account via Square's own
 // Device Code flow — separate from the OTP flow above, which pairs our own
 // app onto a phone. The returned code is entered on the terminal's screen.
 configDeviceRouter.post(
     "/:deviceId/square-pairing",
+    requireScope("devices:admin"),
     async (req: Request, res: Response) => {
         const deviceId = getParamValue(req.params.deviceId);
         if (!deviceId || deviceId === "undefined") {
@@ -284,6 +300,7 @@ configDeviceRouter.post(
 // order checkouts can be created against it.
 configDeviceRouter.get(
     "/:deviceId/square-pairing",
+    requireScope("devices:admin"),
     async (req: Request, res: Response) => {
         const deviceId = getParamValue(req.params.deviceId);
         if (!deviceId || deviceId === "undefined") {
