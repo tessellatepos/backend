@@ -6,7 +6,6 @@ import {
     updateCatalogInCache,
 } from "@/services/catalogSync";
 import { Logger } from "tslog";
-import cors from "cors";
 import * as http from "node:http";
 import { setupWebSocket } from "@/services/websocket/websocket";
 import { refreshIfNeeded } from "@/services/squareOauth";
@@ -14,14 +13,23 @@ import { routes } from "@/utils/registry/api/routes";
 import { TessellateApiRegistry } from "@/utils/registry/api/apiRegistry";
 import { TessellatePluginRegistry } from "@/utils/registry/plugin/pluginRegistry";
 import { loadPlugins } from "@/plugin/lifecycle/lifecycleManager";
+import { urlConfig } from "@/config/urls";
+import { hostGuard } from "@/middleware/hostGuard";
+import { surfaceMiddleware } from "@/middleware/surface";
+import { surfaceCors } from "@/middleware/cors";
 
 const app = express();
-const corsOptions = {
-    origin: "*",
-};
+app.set("trust proxy", urlConfig.trustProxy);
 
-app.use(cors(corsOptions));
+app.use(hostGuard());
+app.use(surfaceMiddleware);
+app.use(surfaceCors());
 app.use(express.json());
+
+// Public, minimal liveness probe. Reachable on the public host.
+app.get("/health", (_req, res) => {
+    res.json({ status: "ok" });
+});
 
 const logger = new Logger();
 
