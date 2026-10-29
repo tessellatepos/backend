@@ -1,14 +1,26 @@
 import EventEmitter from "node:events";
 
+/**
+ * Events fanned out to WebSocket clients. `locationId` is the order's
+ * location when the emitter knows it: clients pinned to other locations do
+ * not receive the event. Without it, any principal with `orders:read` does.
+ */
 export type DatabaseEvent =
-    | { type: "order_created"; payload: { orderId: string } }
-    | { type: "order_updated"; payload: { orderId: string } }
+    | {
+          type: "order_created";
+          payload: { orderId: string; locationId?: string };
+      }
+    | {
+          type: "order_updated";
+          payload: { orderId: string; locationId?: string };
+      }
     | { type: "device_paired"; payload: { deviceId: string } };
 
 export type PaymentStatusEvent = {
     type: "payment_status";
     payload: {
         orderId: string;
+        locationId?: string;
         status: "COMPLETED" | "FAILED";
         paymentMethod: "MOBILE_READER" | "TERMINAL" | "CASH";
         paymentId?: string;

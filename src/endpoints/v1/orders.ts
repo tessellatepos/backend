@@ -178,6 +178,7 @@ orderRouter.post(
                     type: "payment_status",
                     payload: {
                         orderId,
+                        locationId: order.locationId,
                         status: "COMPLETED",
                         paymentMethod: "TERMINAL",
                     },
@@ -240,6 +241,7 @@ orderRouter.get(
                     type: "payment_status",
                     payload: {
                         orderId: req.params.orderId,
+                        locationId: paidOrder?.locationId,
                         status: "COMPLETED",
                         paymentMethod: "TERMINAL",
                     },
@@ -415,6 +417,7 @@ orderRouter.post(
                 type: "payment_status",
                 payload: {
                     orderId,
+                    locationId: order.locationId,
                     status: "COMPLETED",
                     paymentMethod: "MOBILE_READER",
                     paymentId,
