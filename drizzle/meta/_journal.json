@@ -29,6 +29,13 @@
       "when": 1791164488373,
       "tag": "0003_locations",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793307168695,
+      "tag": "0004_locations_deleted_at",
+      "breakpoints": true
     }
   ]
 }

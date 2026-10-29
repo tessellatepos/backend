@@ -157,6 +157,7 @@ export const locationsTable = pgTable("tessellate-locations", {
     logoUrl: text("logo_url"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
 
 export const pluginRegistryTable = pgTable("tessellate-plugin-registry", {
