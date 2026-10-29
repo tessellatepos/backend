@@ -7,6 +7,7 @@ import { FixedWindowLimiter, clientKey } from "@/utils/rateLimiter";
 import { getParamValue } from "@/utils/expressHelpers";
 import { hasScope, requireScope } from "@/middleware/authenticate";
 import { getConfigDeviceByID } from "@/services/db/configDevice";
+import { closeSocketsForPrincipal } from "@/services/websocket/websocket";
 import {
     issueDeviceToken,
     pairingCodeMatches,
@@ -85,6 +86,7 @@ authRouter.delete(
             res.status(404).json({ message: "Device not found" });
             return;
         }
+        closeSocketsForPrincipal(deviceId);
         res.json({ message: "Device token revoked" });
     },
 );

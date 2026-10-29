@@ -2,6 +2,7 @@ import express, { Request, Response, Router } from "express";
 import { Logger } from "tslog";
 import { requireScope } from "@/middleware/authenticate";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
+import { closeSocketsForPrincipal } from "@/services/websocket/websocket";
 import {
     UserError,
     createUser,
@@ -74,13 +75,14 @@ userRouter.patch(
     "/:id",
     async (req: Request<{ id: string }>, res: Response) => {
         try {
-            res.json(
-                await updateUser(
-                    req.principal?.id ?? "",
-                    req.params.id,
-                    body(req),
-                ),
+            const user = await updateUser(
+                req.principal?.id ?? "",
+                req.params.id,
+                body(req),
             );
+            // A banned user's open sockets must not outlive the ban.
+            if (body(req).banned === true) closeSocketsForPrincipal(user.id);
+            res.json(user);
         } catch (err) {
             fail(res, err, "Updating the user");
         }
@@ -92,6 +94,7 @@ userRouter.post(
     async (req: Request<{ id: string }>, res: Response) => {
         try {
             await resetPassword(req.params.id, body(req).password);
+            closeSocketsForPrincipal(req.params.id);
             res.status(204).end();
         } catch (err) {
             fail(res, err, "Resetting the password");
