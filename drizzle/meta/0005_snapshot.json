@@ -1,5 +1,5 @@
 {
-  "id": "6155d56c-0a55-4522-97b6-0b054730d384",
+  "id": "f218938e-7882-4ed9-9d7c-0808f5484dc1",
   "prevId": "cd72c04b-b170-4d9a-b290-404e17f692e9",
   "version": "7",
   "dialect": "postgresql",
@@ -798,7 +798,7 @@
         },
         "square_location": {
           "name": "square_location",
-          "type": "varchar(14)",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false
         },

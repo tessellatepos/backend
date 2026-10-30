@@ -27,7 +27,7 @@ export const configDevicesTable = pgTable("tessellate-devices-config", {
         withTimezone: true,
     }).defaultNow(),
     paired_at: timestamp("paired_at", { withTimezone: true }),
-    square_location: varchar("square_location", { length: 14 }),
+    square_location: varchar("square_location", { length: 255 }),
     customer_facing: boolean(),
     device_hardware_id: text("device_hardware_id"),
     device_type: deviceTypeEnum("device_type"),
