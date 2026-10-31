@@ -22,7 +22,7 @@ import {
     locationStore,
 } from "@/services/db/locations";
 import { isAuthorized } from "@/services/squareOauth";
-import { activeProviderName } from "@/services/providers";
+import { getActiveProviderId } from "@/services/providers";
 import { clearSetupToken, setupTokenMatches } from "@/services/setupToken";
 
 /** Which first-run steps are done, derived from the database. */
@@ -110,7 +110,7 @@ export async function hasUsers(): Promise<boolean> {
  * @returns the status document
  */
 export async function getSetupStatus(): Promise<SetupStatus> {
-    const provider = activeProviderName();
+    const provider = getActiveProviderId();
     const [complete, users, locations, devices, squareConnected] =
         await Promise.all([
             isSetupComplete(),
@@ -292,7 +292,7 @@ export async function createStore(
             "SETUP_COMPLETE",
         );
     }
-    if (activeProviderName() !== "local") {
+    if (getActiveProviderId() !== "local") {
         throw new SetupError(
             409,
             "Locations come from Square for this provider",

@@ -13,6 +13,7 @@ import { TessellatePluginRegistry } from "@/utils/registry/plugin/pluginRegistry
 import { loadPlugins } from "@/plugin/lifecycle/lifecycleManager";
 import { rebuildAuth } from "@/services/authProviders";
 import { hasUsers } from "@/services/setup";
+import { initActiveProvider } from "@/services/providers";
 import { initSetupToken } from "@/services/setupToken";
 
 const app = createApp();
@@ -39,6 +40,8 @@ async function start() {
         }
 
         await runMigrations();
+        // Restores the provider chosen at runtime (PROVIDER only seeds the default).
+        await initActiveProvider();
 
         // Built after plugins load and migrations run, so the tables exist
         // and plugin contributions are known. Rebuilt when the owner changes

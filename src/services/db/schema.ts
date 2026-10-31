@@ -78,6 +78,16 @@ export const setupStateTable = pgTable("tessellate-setup-state", {
     completedAt: timestamp("completed_at", { withTimezone: true }).notNull(),
 });
 
+/**
+ * The runtime-selected provider: a single row (id 1). Written by the provider
+ * switch endpoint; the PROVIDER env var only seeds the default when unset.
+ */
+export const configProviderTable = pgTable("tessellate-provider-config", {
+    id: integer("id").primaryKey(),
+    provider: varchar("provider", { length: 32 }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
 export const ordersTable = pgTable("tessellate-orders", {
     id: text("id"),
     locationId: text("location_id").notNull(),

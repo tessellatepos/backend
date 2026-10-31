@@ -1,6 +1,10 @@
 import express, { type Request, type Response, Router } from "express";
 import { Logger } from "tslog";
-import { activeProvider } from "@/services/providers";
+import {
+    getActiveProvider,
+    getActiveProviderId,
+    providerInfo,
+} from "@/services/providers";
 import { getPairedDeviceByType } from "@/services/db/configDevice";
 import { getCustomer } from "@/services/customers";
 import { insertOrder, syncOrderFromSquare } from "@/services/db/orders";
@@ -35,6 +39,7 @@ orderRouter.post(
     requireScope("orders:write"),
     requireLocation((req) => req.body?.locationId),
     async (req, res) => {
+        const provider = getActiveProvider();
         try {
             const orderDetails: Order = req.body;
 
@@ -80,8 +85,7 @@ orderRouter.post(
 
             modifiedOrderDetails.referenceId = crypto.randomUUID();
 
-            const order =
-                await activeProvider.createOrder(modifiedOrderDetails);
+            const order = await provider.createOrder(modifiedOrderDetails);
 
             if (order !== null && order !== undefined) {
                 logger.debug("Created order:", order.referenceId);
@@ -114,10 +118,11 @@ orderRouter.post(
         req: Request<{ orderId: string; checkoutId: string }>,
         res: Response,
     ) => {
+        const provider = getActiveProvider();
         try {
             const orderId = req.params.orderId;
 
-            if (!activeProvider.createTerminalCheckout) {
+            if (!provider.createTerminalCheckout) {
                 res.status(400).json({
                     message:
                         "Terminal checkout is not supported by this provider",
@@ -125,17 +130,24 @@ orderRouter.post(
                 return;
             }
 
-            const terminalDevice = await getPairedDeviceByType("TERMINAL");
-            const deviceId = terminalDevice?.square_device_id;
-            if (!deviceId) {
-                logger.error("No Square-paired Terminal device is configured");
-                res.status(500).json({
-                    message: "Terminal device is not paired with Square",
-                });
-                return;
+            // Only providers with hardware terminals need a paired device; the
+            // local provider takes the payment without one.
+            let deviceId = "";
+            if (providerInfo[getActiveProviderId()].requiresTerminalDevice) {
+                const terminalDevice = await getPairedDeviceByType("TERMINAL");
+                deviceId = terminalDevice?.square_device_id ?? "";
+                if (!deviceId) {
+                    logger.error(
+                        "No Square-paired Terminal device is configured",
+                    );
+                    res.status(500).json({
+                        message: "Terminal device is not paired with Square",
+                    });
+                    return;
+                }
             }
 
-            const order = await activeProvider.fetchOrder(orderId);
+            const order = await provider.fetchOrder(orderId);
             if (!order || !order.totalMoney) {
                 res.status(404).json({
                     message: "Order not found or missing total",
@@ -153,7 +165,7 @@ orderRouter.post(
                 return;
             }
 
-            const checkoutId = await activeProvider.createTerminalCheckout(
+            const checkoutId = await provider.createTerminalCheckout(
                 orderId,
                 order.totalMoney,
                 deviceId,
@@ -167,10 +179,10 @@ orderRouter.post(
             }
 
             const status =
-                await activeProvider.getTerminalCheckoutStatus?.(checkoutId);
+                await provider.getTerminalCheckoutStatus?.(checkoutId);
 
             if (status === "COMPLETED") {
-                const paidOrder = await activeProvider.fetchOrder(orderId);
+                const paidOrder = await provider.fetchOrder(orderId);
                 if (paidOrder) {
                     await syncOrderFromSquare(paidOrder);
                 }
@@ -220,20 +232,19 @@ orderRouter.get(
         req: Request<{ orderId: string; checkoutId: string }>,
         res: Response,
     ) => {
+        const provider = getActiveProvider();
         try {
             const { checkoutId } = req.params;
 
             const status =
-                await activeProvider.getTerminalCheckoutStatus?.(checkoutId);
+                await provider.getTerminalCheckoutStatus?.(checkoutId);
             if (!status) {
                 res.status(404).json({ message: "Checkout not found" });
                 return;
             }
 
             if (status === "COMPLETED") {
-                const paidOrder = await activeProvider.fetchOrder(
-                    req.params.orderId,
-                );
+                const paidOrder = await provider.fetchOrder(req.params.orderId);
                 if (paidOrder) {
                     await syncOrderFromSquare(paidOrder);
                 }
@@ -284,6 +295,7 @@ orderRouter.post(
         req: Request<{ orderId: string; checkoutId: string }>,
         res: Response,
     ) => {
+        const provider = getActiveProvider();
         try {
             const orderId = req.params.orderId;
             const amountTendered = req.body?.amountTendered;
@@ -293,7 +305,7 @@ orderRouter.post(
                 return;
             }
 
-            const order = await activeProvider.fetchOrder(orderId);
+            const order = await provider.fetchOrder(orderId);
             if (!order || !order.totalMoney) {
                 res.status(404).json({
                     message: "Order not found or missing total",
@@ -323,13 +335,13 @@ orderRouter.post(
                 return;
             }
 
-            const changeDue = await activeProvider.payCash(
+            const changeDue = await provider.payCash(
                 orderId,
                 tenderedMoney,
                 order.totalMoney,
             );
 
-            const paidOrder = await activeProvider.fetchOrder(orderId);
+            const paidOrder = await provider.fetchOrder(orderId);
             if (!paidOrder) {
                 res.status(500).json({
                     message:
@@ -368,6 +380,7 @@ orderRouter.post(
         req: Request<{ orderId: string; checkoutId: string }>,
         res: Response,
     ) => {
+        const provider = getActiveProvider();
         try {
             const orderId = req.params.orderId;
             const paymentId = req.body?.paymentId;
@@ -377,7 +390,7 @@ orderRouter.post(
                 return;
             }
 
-            if (!activeProvider.confirmMobileReaderPayment) {
+            if (!provider.confirmMobileReaderPayment) {
                 res.status(400).json({
                     message:
                         "Mobile reader payment is not supported by this provider",
@@ -395,7 +408,7 @@ orderRouter.post(
                 return;
             }
 
-            const verified = await activeProvider.confirmMobileReaderPayment(
+            const verified = await provider.confirmMobileReaderPayment(
                 orderId,
                 paymentId,
             );
@@ -406,7 +419,7 @@ orderRouter.post(
                 return;
             }
 
-            const order = await activeProvider.fetchOrder(orderId);
+            const order = await provider.fetchOrder(orderId);
             if (!order) {
                 res.status(404).json({ message: "Order not found" });
                 return;

@@ -7,7 +7,17 @@ import type {
     Location,
     Money,
     Order,
+    ProviderId,
 } from "@tessellatepos/sdk";
+
+/** Static facts about a provider that endpoints and the UI branch on. */
+export interface ProviderInfo {
+    id: ProviderId;
+    /** Terminal checkout needs a hardware device paired with the provider. */
+    requiresTerminalDevice: boolean;
+    /** Storefronts (locations) can be created and deleted locally. */
+    canManageStorefronts: boolean;
+}
 
 /**
  * A source of truth for the item catalog. itemLocationIds is kept separate

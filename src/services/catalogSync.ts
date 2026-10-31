@@ -1,6 +1,6 @@
 import { Logger } from "tslog";
 import { getRedisClient, setItemsByLocationID } from "@/services/redis";
-import { activeProvider } from "@/services/providers";
+import { getActiveProvider } from "@/services/providers";
 import { catalogStore, getCatalogByLocation } from "@/services/db/catalog";
 import { customerStore } from "@/services/db/customers";
 import { locationStore } from "@/services/db/locations";
@@ -25,7 +25,7 @@ export async function updateCatalogInCache() {
 
     await syncResource({
         name: "locations",
-        fetchRemote: () => activeProvider.fetchLocations(),
+        fetchRemote: () => getActiveProvider().fetchLocations(),
         store: locationStore,
         // orders and devices keep referencing a location a provider drops
         removeMissing: false,
@@ -35,7 +35,7 @@ export async function updateCatalogInCache() {
         name: "catalog",
         fetchRemote: async () => {
             const { items, itemLocationIds } =
-                await activeProvider.fetchCatalog();
+                await getActiveProvider().fetchCatalog();
             return items.map((item) => ({
                 ...item,
                 locationIds: itemLocationIds.get(item.id) ?? [],
@@ -53,7 +53,7 @@ export async function updateCatalogInCache() {
     try {
         await syncResource({
             name: "customers",
-            fetchRemote: () => activeProvider.fetchCustomers(),
+            fetchRemote: () => getActiveProvider().fetchCustomers(),
             store: customerStore,
         });
     } catch (err) {

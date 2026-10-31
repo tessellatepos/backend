@@ -9,7 +9,7 @@ import type {
 } from "@tessellatepos/plugin-sdk";
 import type { Principal } from "@tessellatepos/sdk";
 import type { PluginServerContext } from "@tessellatepos/plugin-sdk/server";
-import { activeProvider } from "@/services/providers";
+import { getActiveProvider } from "@/services/providers";
 import { getItemById } from "@/services/redis";
 import { findCustomers, getCustomer } from "@/services/customers";
 import { TessellatePluginDatabaseRegistry } from "@/utils/registry/database/pluginDatabaseRegistry";
@@ -53,7 +53,7 @@ export function buildPluginServerContext(
         principal,
         getOrder: async (orderId: string) => {
             try {
-                const order = await activeProvider.fetchOrder(orderId);
+                const order = await getActiveProvider().fetchOrder(orderId);
                 return order ?? null;
             } catch (err) {
                 logger.warn(

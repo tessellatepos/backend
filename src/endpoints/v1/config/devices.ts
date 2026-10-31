@@ -17,7 +17,7 @@ import { requireScope } from "@/middleware/authenticate";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 import { FixedWindowLimiter, rateLimit } from "@/utils/rateLimiter";
 import { deviceTypeEnum } from "@/services/db/schema";
-import { activeProvider } from "@/services/providers";
+import { getActiveProvider } from "@/services/providers";
 
 const DEVICE_TYPES = deviceTypeEnum.enumValues;
 
@@ -299,13 +299,14 @@ configDeviceRouter.post(
     "/:deviceId/square-pairing",
     requireScope("devices:admin"),
     async (req: Request, res: Response) => {
+        const provider = getActiveProvider();
         const deviceId = getParamValue(req.params.deviceId);
         if (!deviceId || deviceId === "undefined") {
             res.status(400).json({ message: "Invalid deviceID" });
             return;
         }
 
-        if (!activeProvider.createDeviceCode) {
+        if (!provider.createDeviceCode) {
             res.status(400).json({
                 message: "Device pairing is not supported by this provider",
             });
@@ -331,10 +332,7 @@ configDeviceRouter.post(
         const name = req.body?.name || `Terminal ${deviceId}`;
 
         logger.info(`Requesting Square device code for device ID: ${deviceId}`);
-        const deviceCode = await activeProvider.createDeviceCode(
-            locationId,
-            name,
-        );
+        const deviceCode = await provider.createDeviceCode(locationId, name);
 
         if (!deviceCode) {
             res.status(500).json({
@@ -366,13 +364,14 @@ configDeviceRouter.get(
     "/:deviceId/square-pairing",
     requireScope("devices:admin"),
     async (req: Request, res: Response) => {
+        const provider = getActiveProvider();
         const deviceId = getParamValue(req.params.deviceId);
         if (!deviceId || deviceId === "undefined") {
             res.status(400).json({ message: "Invalid deviceID" });
             return;
         }
 
-        if (!activeProvider.getDeviceCode) {
+        if (!provider.getDeviceCode) {
             res.status(400).json({
                 message: "Device pairing is not supported by this provider",
             });
@@ -387,7 +386,7 @@ configDeviceRouter.get(
             return;
         }
 
-        const deviceCode = await activeProvider.getDeviceCode(
+        const deviceCode = await provider.getDeviceCode(
             config.square_device_code_id,
         );
         if (!deviceCode) {

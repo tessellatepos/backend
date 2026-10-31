@@ -310,7 +310,8 @@ describe("first-run setup API", () => {
     });
 
     it("is 409 for the square provider", async () => {
-        process.env.PROVIDER = "square";
+        const { setActiveProvider } = await import("@/services/providers");
+        await setActiveProvider("square");
         try {
             const r = await call("/store", {
                 body: { name: "S", address: ADDRESS, currency: "CAD" },
@@ -321,7 +322,7 @@ describe("first-run setup API", () => {
             assert.equal((await call("/status")).json.provider, "square");
             assert.equal((await call("/status")).json.steps.provider, false);
         } finally {
-            process.env.PROVIDER = "local";
+            await setActiveProvider("local");
         }
     });
 
