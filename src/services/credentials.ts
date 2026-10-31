@@ -4,6 +4,8 @@
  * the previous secret until its overlap ends. The webhook secret signs
  * deliveries and is stored encrypted.
  */
+import { isIP } from "node:net";
+import { isBlockedAddress } from "@/gateway/webhooks/ssrf";
 import { createHash, randomBytes } from "node:crypto";
 import { Logger } from "tslog";
 import {
@@ -179,8 +181,13 @@ export function validateWebhookUrl(value: unknown): string | null {
     const ok =
         url.protocol === "https:" ||
         (url.protocol === "http:" && isLoopback(url.hostname));
-    // Link-local addresses (cloud metadata services) are never a webhook target.
-    const linkLocal = url.hostname.startsWith("169.254.");
+    // Private, link-local and metadata addresses are never a webhook target
+    // (names are checked again at delivery, when they are resolved).
+    const literal = url.hostname.replace(/^\[|\]$/g, "");
+    const linkLocal =
+        isIP(literal) !== 0 &&
+        !isLoopback(url.hostname) &&
+        isBlockedAddress(literal);
     if (!ok || linkLocal || url.username || url.password) {
         throw new CredentialValidationError(
             "webhook_url must be https (http only to localhost)",

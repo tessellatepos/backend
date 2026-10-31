@@ -6,6 +6,7 @@
  * The queue is the delivery table behind this module's functions, so it can
  * move to a worker process later without changing callers.
  */
+import { assertPublicTarget, type LookupAll } from "@/gateway/webhooks/ssrf";
 import { randomBytes, randomUUID } from "node:crypto";
 import { Logger } from "tslog";
 import { bigintReplacer } from "@tessellatepos/sdk";
@@ -158,11 +159,13 @@ async function finish(
  * @param row the claimed row
  * @param now the attempt time
  * @param fetchImpl the fetch to use (tests inject one)
+ * @param lookupAll the DNS lookup to use (tests inject one)
  */
 export async function sendDelivery(
     row: DeliveryRow,
     now: Date,
     fetchImpl: typeof fetch = fetch,
+    lookupAll?: LookupAll,
 ): Promise<void> {
     const credential = await getCredentialRow(row.credential_id);
     if (!credential?.webhook_url || credential.revoked_at) {
@@ -188,6 +191,8 @@ export async function sendDelivery(
         row.body,
     );
     try {
+        // The host may have changed to a private address since it was saved.
+        await assertPublicTarget(credential.webhook_url, lookupAll);
         const res = await fetchImpl(credential.webhook_url, {
             method: "POST",
             headers: {
@@ -223,6 +228,7 @@ export async function sendDelivery(
  * @param options.now the current time
  * @param options.limit the most deliveries per pass
  * @param options.fetchImpl the fetch to use
+ * @param options.lookupAll the DNS lookup to use
  * @returns how many deliveries were attempted
  */
 export async function deliverDue(
@@ -230,12 +236,13 @@ export async function deliverDue(
         now?: Date;
         limit?: number;
         fetchImpl?: typeof fetch;
+        lookupAll?: LookupAll;
     } = {},
 ): Promise<number> {
     const now = options.now ?? new Date();
     const rows = await claimDueDeliveries(now, options.limit ?? 20, LEASE_MS);
     for (const row of rows) {
-        await sendDelivery(row, now, options.fetchImpl);
+        await sendDelivery(row, now, options.fetchImpl, options.lookupAll);
     }
     return rows.length;
 }

@@ -214,4 +214,45 @@ describe("gateway outbound webhooks", () => {
         assert.equal(stored?.body, original.body);
         assert.equal(await replayDelivery("tcid_other", original.id), null);
     });
+
+    it("refuses to deliver to a host that resolves to a private address", async () => {
+        const c = await make({ webhook_url: "https://hooks.example.test/in" });
+        await queueEvent("orderCreated", [order(locA)]);
+        let fetched = 0;
+        // Other tests leave loopback deliveries pending; count only ours.
+        const fetchImpl = (async (target: string) => {
+            if (target.startsWith("https://hooks.example.test")) fetched++;
+            return new Response("ok");
+        }) as unknown as typeof fetch;
+        await deliverDue({
+            limit: 100,
+            fetchImpl,
+            lookupAll: async () => [{ address: "10.0.0.5" }],
+        });
+        assert.equal(fetched, 0);
+        const [row] = await listDeliveries(c.client_id, 1);
+        assert.equal(row.status, "pending");
+        assert.equal(row.attempts, 1);
+        assert.equal(row.last_status_code, null);
+    });
+
+    it("delivers to a host that resolves to a public address, without following redirects", async () => {
+        const c = await make({ webhook_url: "https://hooks.example.test/in" });
+        await queueEvent("orderCreated", [order(locA)]);
+        let init: RequestInit | undefined;
+        const fetchImpl = (async (_u: unknown, i: RequestInit) => {
+            init = i;
+            return new Response("moved", { status: 302 });
+        }) as unknown as typeof fetch;
+        await deliverDue({
+            limit: 100,
+            fetchImpl,
+            lookupAll: async () => [{ address: "93.184.216.34" }],
+        });
+        assert.equal(init?.redirect, "manual");
+        assert.ok(init?.signal);
+        const [row] = await listDeliveries(c.client_id, 1);
+        assert.equal(row.last_status_code, 302);
+        assert.equal(row.status, "pending", "a redirect is a failed attempt");
+    });
 });
