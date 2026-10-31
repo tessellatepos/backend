@@ -28,6 +28,7 @@ import {
 } from "@/services/db/catalogManage";
 import { importCatalogCsv } from "@/services/db/catalogImport";
 import {
+    InvalidOrderError,
     OrderConflictError,
     type CatalogProvider,
     type CatalogWriteProvider,
@@ -142,19 +143,44 @@ async function createOrder(order: Order): Promise<Order | undefined | null> {
 
     for (const lineItem of order.lineItems) {
         const quantity = BigInt(lineItem.quantity ?? 1n);
-        let unitPrice = lineItem.priceMoney
+        const clientPrice = lineItem.priceMoney
             ? parseMoney(lineItem.priceMoney)
             : undefined;
+        let unitPrice = clientPrice;
 
-        if (!unitPrice?.amount && lineItem.itemId) {
+        if (lineItem.itemId) {
             const [variationRow] = await drizzleDB
-                .select({ priceMoney: catalogItemVariationsTable.priceMoney })
+                .select({
+                    priceMoney: catalogItemVariationsTable.priceMoney,
+                    pricingType: catalogItemVariationsTable.pricingType,
+                })
                 .from(catalogItemVariationsTable)
                 .where(
                     eq(catalogItemVariationsTable.variationId, lineItem.itemId),
                 )
                 .limit(1);
-            unitPrice = parseMoney(variationRow?.priceMoney);
+            if (variationRow) {
+                const catalogPrice = parseMoney(variationRow.priceMoney);
+                if (variationRow.pricingType === "VARIABLE") {
+                    // The customer names the price (e.g. a donation).
+                    if (!clientPrice?.amount || clientPrice.amount <= 0n) {
+                        throw new InvalidOrderError(
+                            `A positive price is required for ${lineItem.itemId}`,
+                        );
+                    }
+                    if (
+                        catalogPrice?.currency &&
+                        clientPrice.currency !== catalogPrice.currency
+                    ) {
+                        throw new InvalidOrderError(
+                            `Price currency must be ${catalogPrice.currency}`,
+                        );
+                    }
+                } else {
+                    // Fixed price: the catalog decides, the client cannot.
+                    unitPrice = catalogPrice;
+                }
+            }
         }
 
         if (!unitPrice?.amount) continue;

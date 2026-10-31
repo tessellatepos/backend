@@ -93,6 +93,7 @@ export type OrderCreateInput = z.infer<typeof orderCreateSchema>;
  * ids and quantities cross over: the provider prices each line from the
  * catalog, never from the caller. The pickup contact is validated but not
  * stored yet (`Order` has no pickup fields).
+ * TODO(0.0.3-alpha): store the pickup contact (name, phone, time).
  * @param input the output of {@link orderCreateSchema}
  * @returns the body the internal `POST /orders/create` route expects
  */

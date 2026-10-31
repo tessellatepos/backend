@@ -104,6 +104,17 @@ export class OrderConflictError extends Error {
     }
 }
 
+/**
+ * Thrown by a provider when an order's content is invalid (e.g. a bad
+ * client-supplied price). Maps to HTTP 400, not 500.
+ */
+export class InvalidOrderError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "InvalidOrderError";
+    }
+}
+
 export interface PaymentProvider {
     createOrder(order: Order): Promise<Order | undefined | null>;
     fetchOrder(orderId: string): Promise<Order | undefined | null>;
