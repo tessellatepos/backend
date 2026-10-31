@@ -14,6 +14,8 @@ import { closeTestDb, setupTestDb } from "@/test/db";
 const ITEM = "PRICING-ITEM";
 const FIXED = "PRICING-FIXED";
 const VARIABLE = "PRICING-VARIABLE";
+const OVERRIDDEN = "PRICING-OVERRIDDEN";
+const OVERRIDE_TO_VARIABLE = "PRICING-OVERRIDE-VARIABLE";
 
 const line = (itemId: string, amount?: string, currency = "CAD") => ({
     itemId,
@@ -24,9 +26,10 @@ const line = (itemId: string, amount?: string, currency = "CAD") => ({
 const total = async (
     lineItems: ReturnType<typeof line>[],
     catalogPricing = true,
+    locationId?: string,
 ) =>
     (
-        await localProvider.createOrder({ lineItems } as never, {
+        await localProvider.createOrder({ lineItems, locationId } as never, {
             catalogPricing,
         })
     )?.totalMoney?.amount;
@@ -49,6 +52,27 @@ describe("local provider order pricing", () => {
                 itemId: ITEM,
                 pricingType: "VARIABLE",
                 priceMoney: { amount: "0", currency: "CAD" },
+            },
+            {
+                variationId: OVERRIDDEN,
+                itemId: ITEM,
+                pricingType: "FIXED",
+                priceMoney: { amount: "500", currency: "CAD" },
+                locationOverrides: [
+                    {
+                        locationId: "LOC-B",
+                        priceMoney: { amount: "800", currency: "CAD" },
+                    },
+                ],
+            },
+            {
+                variationId: OVERRIDE_TO_VARIABLE,
+                itemId: ITEM,
+                pricingType: "FIXED",
+                priceMoney: { amount: "500", currency: "CAD" },
+                locationOverrides: [
+                    { locationId: "LOC-B", pricingType: "VARIABLE" },
+                ],
             },
         ]);
     });
@@ -109,5 +133,31 @@ describe("local provider order pricing", () => {
             ),
             700n,
         );
+    });
+
+    it("charges the location override price, the base price elsewhere", async () => {
+        assert.equal(await total([line(OVERRIDDEN)], true, "LOC-B"), 1600n);
+        assert.equal(await total([line(OVERRIDDEN)], true, "LOC-A"), 1000n);
+        assert.equal(await total([line(OVERRIDDEN)]), 1000n);
+    });
+
+    it("honours a location override that makes a variation variable", async () => {
+        assert.equal(
+            await total([line(OVERRIDE_TO_VARIABLE, "300")], true, "LOC-B"),
+            600n,
+        );
+        await assert.rejects(
+            total([line(OVERRIDE_TO_VARIABLE)], true, "LOC-B"),
+            InvalidOrderError,
+        );
+        // Elsewhere it is still fixed: the client price is ignored.
+        assert.equal(
+            await total([line(OVERRIDE_TO_VARIABLE, "300")], true, "LOC-A"),
+            1000n,
+        );
+    });
+
+    it("leaves the staff till on the client price at an overridden location", async () => {
+        assert.equal(await total([line(OVERRIDDEN, "1")], false, "LOC-B"), 2n);
     });
 });

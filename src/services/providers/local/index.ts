@@ -32,6 +32,7 @@ import {
     updateCategory,
     updateItem,
 } from "@/services/db/catalogManage";
+import { resolveVariationPricing } from "@/services/variationPricing";
 import { importCatalogCsv } from "@/services/db/catalogImport";
 import {
     InvalidOrderError,
@@ -177,11 +178,13 @@ async function fetchLocations(): Promise<Location[]> {
 }
 
 /**
- * Prices one line for an online order: FIXED variations take the catalog
- * price and ignore the client's; VARIABLE ones take the client's, which must
+ * Prices one line for an online order at a location: FIXED variations take
+ * the catalog price (the location's override if it has one) and ignore the
+ * client's; VARIABLE ones take the client's, which must
  * be positive and in the catalog currency.
  * @param lineItem the requested line
  * @param clientPrice the price the client sent, if any
+ * @param locationId the order's location, for location price overrides
  * @returns the unit price to charge
  */
 async function catalogPricedLine(
@@ -189,12 +192,15 @@ async function catalogPricedLine(
         ? L
         : never,
     clientPrice: Money | undefined,
+    locationId: string | null | undefined,
 ): Promise<Money | undefined> {
     const [row] = lineItem.itemId
         ? await drizzleDB
               .select({
                   priceMoney: catalogItemVariationsTable.priceMoney,
                   pricingType: catalogItemVariationsTable.pricingType,
+                  locationOverrides:
+                      catalogItemVariationsTable.locationOverrides,
               })
               .from(catalogItemVariationsTable)
               .where(
@@ -205,8 +211,12 @@ async function catalogPricedLine(
     if (!row) {
         throw new InvalidOrderError(`Unknown variation ${lineItem.itemId}`);
     }
-    const catalogPrice = parseMoney(row.priceMoney);
-    if (row.pricingType !== "VARIABLE") return catalogPrice;
+    const { pricingType, priceMoney: catalogPrice } = resolveVariationPricing(
+        row,
+        row.locationOverrides as never,
+        locationId,
+    );
+    if (pricingType !== "VARIABLE") return catalogPrice;
     if (!clientPrice?.amount || clientPrice.amount <= 0n) {
         throw new InvalidOrderError(
             `A positive price is required for ${lineItem.itemId}`,
@@ -247,7 +257,11 @@ async function createOrder(
         let unitPrice = clientPrice;
 
         if (options.catalogPricing) {
-            unitPrice = await catalogPricedLine(lineItem, clientPrice);
+            unitPrice = await catalogPricedLine(
+                lineItem,
+                clientPrice,
+                order.locationId,
+            );
         } else if (!unitPrice?.amount && lineItem.itemId) {
             // Staff till: a client price wins, the catalog fills a gap.
             const [variationRow] = await drizzleDB
