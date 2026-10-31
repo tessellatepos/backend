@@ -1,4 +1,5 @@
 import {
+    index,
     pgTable,
     pgEnum,
     timestamp,
@@ -270,6 +271,41 @@ export const apiCredentialsTable = pgTable("tessellate-api-credentials", {
     last_used_at: timestamp("last_used_at", { withTimezone: true }),
     revoked_at: timestamp("revoked_at", { withTimezone: true }),
 });
+
+// Outbound webhook deliveries to gateway credentials. One row per event per
+// credential; a replay is a new row that carries the same event id and body.
+export const apiWebhookDeliveriesTable = pgTable(
+    "tessellate-webhook-deliveries",
+    {
+        id: varchar("id", { length: 64 }).primaryKey().notNull(),
+        event_id: varchar("event_id", { length: 64 }).notNull(),
+        event_type: varchar("event_type", { length: 64 }).notNull(),
+        credential_id: varchar("credential_id", { length: 64 }).notNull(),
+        body: text("body").notNull(),
+        status: varchar("status", { length: 16 }).notNull(),
+        attempts: integer("attempts").notNull().default(0),
+        next_attempt_at: timestamp("next_attempt_at", {
+            withTimezone: true,
+        }).notNull(),
+        last_status_code: integer("last_status_code"),
+        last_error: varchar("last_error", { length: 200 }),
+        replay_of: varchar("replay_of", { length: 64 }),
+        created_at: timestamp("created_at", { withTimezone: true })
+            .defaultNow()
+            .notNull(),
+        delivered_at: timestamp("delivered_at", { withTimezone: true }),
+    },
+    (table) => [
+        index("tessellate-webhook-deliveries-due").on(
+            table.status,
+            table.next_attempt_at,
+        ),
+        index("tessellate-webhook-deliveries-credential").on(
+            table.credential_id,
+            table.created_at,
+        ),
+    ],
+);
 
 // ---------------------------------------------------------------------------
 // better-auth tables

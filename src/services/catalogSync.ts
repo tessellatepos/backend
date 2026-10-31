@@ -1,4 +1,5 @@
 import { Logger } from "tslog";
+import { publishGatewayEvent } from "@/gateway/webhooks/dispatch";
 import { getRedisClient, rebuildItemCache } from "@/services/redis";
 import {
     getActiveProvider,
@@ -84,6 +85,7 @@ export async function updateCatalogInCache() {
     }
 
     await refreshCatalogCache();
+    publishGatewayEvent("catalogSynced", []);
 }
 
 /** Starts the hourly catalog sync after the initial one. */

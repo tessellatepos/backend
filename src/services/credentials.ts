@@ -178,7 +178,9 @@ export function validateWebhookUrl(value: unknown): string | null {
     const ok =
         url.protocol === "https:" ||
         (url.protocol === "http:" && isLoopback(url.hostname));
-    if (!ok || url.username || url.password) {
+    // Link-local addresses (cloud metadata services) are never a webhook target.
+    const linkLocal = url.hostname.startsWith("169.254.");
+    if (!ok || linkLocal || url.username || url.password) {
         throw new CredentialValidationError(
             "webhook_url must be https (http only to localhost)",
         );

@@ -1,4 +1,5 @@
 import { Plugin } from "@/plugin/plugin";
+import { publishGatewayEvent } from "@/gateway/webhooks/dispatch";
 import { TessellatePluginApiRegistry } from "@/utils/registry/api/pluginApiRegistry";
 import type { PluginPermissionProvider } from "@tessellatepos/plugin-sdk";
 import type {
@@ -135,6 +136,8 @@ export class TessellatePluginRegistry {
         def: EventDefinition<THandler>,
         ...args: Parameters<THandler>
     ): void {
+        // Outbound webhooks observe every event, whatever plugins it reaches.
+        publishGatewayEvent(def.name, args);
         for (const plugin of this.pluginsWith(options.requires)) {
             for (const handler of plugin.getEventListeners(def.name)) {
                 Promise.resolve()

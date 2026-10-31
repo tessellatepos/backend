@@ -1,4 +1,5 @@
 import { createApp, mountApiRoutes } from "@/app";
+import { startWebhookWorker } from "@/gateway/webhooks/worker";
 import { getRedisClient } from "@/services/redis";
 import { pool, runMigrations } from "@/services/db/postgres";
 import {
@@ -86,6 +87,8 @@ async function start() {
         httpServer.listen(port, () => {
             logger.info(`Server listening on ${port}`);
         });
+        // Retries outbound gateway webhooks; stopped on shutdown.
+        const stopWebhookWorker = startWebhookWorker();
 
         let shuttingDown = false;
         const shutdown = async (signal: NodeJS.Signals) => {
@@ -93,6 +96,7 @@ async function start() {
             shuttingDown = true;
             logger.info(`Received ${signal}, shutting down...`);
 
+            stopWebhookWorker();
             await new Promise<void>((resolve) =>
                 httpServer.close(() => resolve()),
             );
