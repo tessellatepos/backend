@@ -59,6 +59,35 @@ export const requireGatewayCredential: RequestHandler = (req, res, next) => {
     next();
 };
 
+/** Per-IP budget for the public docs and OpenAPI document, per minute. */
+export const PUBLIC_DOCS_PER_IP_PER_MINUTE = 60;
+
+/**
+ * Rate limits the public docs routes per IP. Fails closed (503) when the
+ * limiter is unavailable.
+ * @param req the request
+ * @param res the response
+ * @param next continues the chain
+ */
+export const limitPublicDocs: RequestHandler = async (req, res, next) => {
+    try {
+        const result = await takeToken(
+            `gw:rl:docs:${req.ip ?? "unknown"}`,
+            PUBLIC_DOCS_PER_IP_PER_MINUTE,
+            PUBLIC_DOCS_PER_IP_PER_MINUTE,
+        );
+        if (!result.allowed) {
+            limited(res, result.retryAfterMs);
+            return;
+        }
+    } catch (err) {
+        logger.error("Rate limiter unavailable", err);
+        sendGatewayError(res, 503, "unavailable", "Service unavailable");
+        return;
+    }
+    next();
+};
+
 /**
  * The browser origin rule. A credential's origins allow CORS for that origin
  * only. A publishable call (client id only) must come from an allowed origin

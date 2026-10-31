@@ -390,18 +390,35 @@ describe("gateway routes", () => {
         assert.ok(!text.includes("tcs_"));
     });
 
-    it("requires a credential for the document and the reference", async () => {
-        assert.equal(
-            (await call("GET", "/gateway/v1/openapi.json")).status,
-            401,
-        );
-        const docs = await call("GET", "/gateway/v1/docs", {
-            auth: basic(reader),
-        });
+    it("serves the document and the reference without a credential", async () => {
+        const anon = await call("GET", "/gateway/v1/openapi.json");
+        assert.equal(anon.status, 200);
+        const doc = (await anon.json()) as {
+            paths: Record<string, Record<string, unknown>>;
+        };
+        assert.ok(doc.paths["/orders"]?.post, "anonymous sees every operation");
+        const docs = await call("GET", "/gateway/v1/docs");
         assert.equal(docs.status, 200);
         const html = await docs.text();
         assert.match(html, /@scalar\/api-reference@1\.74\.0/);
         assert.match(html, /openapi\.json/);
+        // Every other gateway route still needs a credential.
+        for (const path of ["/gateway/v1/items", "/gateway/v1/locations"]) {
+            assert.equal((await call("GET", path)).status, 401, path);
+        }
+        assert.equal((await call("POST", "/gateway/v1/orders")).status, 401);
+        // A wrong credential gets the public view of the docs, nothing else.
+        const wrong = {
+            auth: "Basic " + Buffer.from("tcid_x:nope").toString("base64"),
+        };
+        assert.equal(
+            (await call("GET", "/gateway/v1/openapi.json", wrong)).status,
+            200,
+        );
+        assert.equal(
+            (await call("GET", "/gateway/v1/items", wrong)).status,
+            401,
+        );
     });
 
     it("answers a preflight for a live origin only", async () => {
