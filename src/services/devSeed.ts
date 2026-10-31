@@ -99,7 +99,13 @@ export const devSeedDeps: DevSeedDeps = {
  * @returns the reason, or null when the seed may run
  */
 export function refusalReason(env: DevSeedEnv): string | null {
-    if (env.NODE_ENV === "production") return "NODE_ENV is production";
+    // Allow-list, not block-list: an unset NODE_ENV is how a deployed
+    // instance usually ends up with the known admin / password account.
+    if (env.NODE_ENV !== "development" && env.NODE_ENV !== "test") {
+        return env.NODE_ENV
+            ? `NODE_ENV is ${env.NODE_ENV}, not development or test`
+            : "NODE_ENV is not set (use NODE_ENV=development)";
+    }
     if (env.SETUP_TOKEN?.trim()) return "SETUP_TOKEN is set";
     if (env.PUBLIC_URL?.trim()) return "PUBLIC_URL is set";
     return null;
@@ -111,8 +117,8 @@ export function refusalReason(env: DevSeedEnv): string | null {
  * provider, the demo catalog (when the catalog is empty), and marks setup
  * complete, so the instance goes straight to
  * sign-in. Does nothing once any user exists. Refuses (logs an error and
- * changes nothing) under NODE_ENV=production or alongside SETUP_TOKEN or
- * PUBLIC_URL.
+ * changes nothing) unless NODE_ENV is explicitly development or test, and
+ * alongside SETUP_TOKEN or PUBLIC_URL.
  * @param env the environment, normally process.env
  * @param deps the side effects, normally {@link devSeedDeps}
  * @returns what happened; never throws
