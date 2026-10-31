@@ -378,16 +378,12 @@ describe("gateway routes", () => {
             paths: Record<string, Record<string, { operationId: string }>>;
         };
         assert.equal(doc.openapi, "3.1.0");
-        assert.ok(doc.paths["/gateway/v1/items"]?.get);
-        assert.ok(doc.paths["/gateway/v1/items/{locationId}"]?.get);
-        assert.ok(doc.paths["/gateway/v1/locations"]?.get);
+        assert.ok(doc.paths["/items"]?.get);
+        assert.ok(doc.paths["/items/{locationId}"]?.get);
+        assert.ok(doc.paths["/locations"]?.get);
+        assert.equal(doc.paths["/orders"], undefined, "no orders:write");
         assert.equal(
-            doc.paths["/gateway/v1/orders"],
-            undefined,
-            "no orders:write",
-        );
-        assert.equal(
-            doc.paths["/gateway/v1/customers"]?.post,
+            doc.paths["/customers"]?.post,
             undefined,
             "no customers:write",
         );
@@ -570,7 +566,7 @@ describe("plugin routes on the gateway", () => {
         });
         const paths = ((await doc.json()) as { paths: Record<string, unknown> })
             .paths;
-        assert.equal(paths["/gateway/v1/plugins/loyalty/points"], undefined);
+        assert.equal(paths["/plugins/loyalty/points"], undefined);
     });
 
     it("gives a generic 500 when a plugin handler throws", async () => {
