@@ -195,7 +195,9 @@ orderRouter.post(
 
             modifiedOrderDetails.referenceId = crypto.randomUUID();
 
-            const order = await provider.createOrder(modifiedOrderDetails);
+            const order = await provider.createOrder(modifiedOrderDetails, {
+                catalogPricing: Boolean(req.gatewayCredential),
+            });
 
             if (order !== null && order !== undefined) {
                 logger.debug("Created order:", order.referenceId);

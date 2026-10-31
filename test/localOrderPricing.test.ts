@@ -21,9 +21,15 @@ const line = (itemId: string, amount?: string, currency = "CAD") => ({
     ...(amount ? { priceMoney: { amount, currency } } : {}),
 });
 
-const total = async (lineItems: ReturnType<typeof line>[]) =>
-    (await localProvider.createOrder({ lineItems } as never))?.totalMoney
-        ?.amount;
+const total = async (
+    lineItems: ReturnType<typeof line>[],
+    catalogPricing = true,
+) =>
+    (
+        await localProvider.createOrder({ lineItems } as never, {
+            catalogPricing,
+        })
+    )?.totalMoney?.amount;
 
 describe("local provider order pricing", () => {
     before(async () => {
@@ -62,6 +68,18 @@ describe("local provider order pricing", () => {
         assert.equal(await total([line(FIXED)]), 1000n);
     });
 
+    it("rejects an unknown variation", async () => {
+        await assert.rejects(
+            total([line("NO-SUCH-VARIATION", "100")]),
+            InvalidOrderError,
+        );
+    });
+
+    it("keeps the staff till's client price over the catalog", async () => {
+        assert.equal(await total([line(FIXED, "1")], false), 2n);
+        assert.equal(await total([line(FIXED)], false), 1000n);
+    });
+
     it("uses the client price for a variable-price variation", async () => {
         assert.equal(await total([line(VARIABLE, "250")]), 500n);
     });
@@ -79,13 +97,16 @@ describe("local provider order pricing", () => {
 
     it("still takes the client price for an ad-hoc line with no catalog row", async () => {
         assert.equal(
-            await total([
-                {
-                    name: "Tea",
-                    quantity: 2n,
-                    priceMoney: { amount: "350", currency: "CAD" },
-                } as never,
-            ]),
+            await total(
+                [
+                    {
+                        name: "Tea",
+                        quantity: 2n,
+                        priceMoney: { amount: "350", currency: "CAD" },
+                    } as never,
+                ],
+                false,
+            ),
             700n,
         );
     });

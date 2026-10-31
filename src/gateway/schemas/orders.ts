@@ -57,8 +57,9 @@ export const orderSchema = z.object({
 }) satisfies z.ZodType<Order>;
 
 /**
- * What a gateway caller may send to create an order. Strict: any price,
- * discount, total or tender field is rejected. Totals are computed on the
+ * What a gateway caller may send to create an order. Strict: any
+ * discount, total or tender field is rejected; a line price is accepted but
+ * only used for VARIABLE-priced variations. Totals are computed on the
  * server from the catalog.
  */
 export const orderCreateSchema = z.strictObject({
@@ -69,6 +70,9 @@ export const orderCreateSchema = z.strictObject({
         .array(
             z.strictObject({
                 variation_id: z.string().min(1).max(255),
+                // Only honoured for VARIABLE-priced variations (a donation);
+                // FIXED ones are priced from the catalog and ignore it.
+                price_money: moneySchema.optional(),
                 quantity: wireBigint.refine((q) => q > 0n && q <= 999n, {
                     message: "quantity must be 1 to 999",
                 }),
@@ -89,9 +93,9 @@ export const orderCreateSchema = z.strictObject({
 export type OrderCreateInput = z.infer<typeof orderCreateSchema>;
 
 /**
- * Maps a validated gateway order to the internal order body. Only variation
- * ids and quantities cross over: the provider prices each line from the
- * catalog, never from the caller. The pickup contact is validated but not
+ * Maps a validated gateway order to the internal order body. Variation ids
+ * and quantities cross over, plus a price the provider only honours for
+ * VARIABLE variations. The pickup contact is validated but not
  * stored yet (`Order` has no pickup fields).
  * TODO(0.0.3-alpha): store the pickup contact (name, phone, time).
  * @param input the output of {@link orderCreateSchema}
@@ -108,6 +112,7 @@ export function toInternalOrder(input: OrderCreateInput): {
     const lineItems: CartItem[] = input.line_items.map((line) => ({
         itemId: line.variation_id,
         quantity: line.quantity,
+        ...(line.price_money ? { priceMoney: line.price_money } : {}),
     }));
     return {
         locationId: input.location_id,

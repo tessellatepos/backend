@@ -29,6 +29,7 @@ import {
 import { importCatalogCsv } from "@/services/db/catalogImport";
 import {
     InvalidOrderError,
+    type CreateOrderOptions,
     OrderConflictError,
     type CatalogProvider,
     type CatalogWriteProvider,
@@ -129,11 +130,61 @@ async function fetchLocations(): Promise<Location[]> {
 }
 
 /**
+ * Prices one line for an online order: FIXED variations take the catalog
+ * price and ignore the client's; VARIABLE ones take the client's, which must
+ * be positive and in the catalog currency.
+ * @param lineItem the requested line
+ * @param clientPrice the price the client sent, if any
+ * @returns the unit price to charge
+ */
+async function catalogPricedLine(
+    lineItem: Order["lineItems"] extends (infer L)[] | null | undefined
+        ? L
+        : never,
+    clientPrice: Money | undefined,
+): Promise<Money | undefined> {
+    const [row] = lineItem.itemId
+        ? await drizzleDB
+              .select({
+                  priceMoney: catalogItemVariationsTable.priceMoney,
+                  pricingType: catalogItemVariationsTable.pricingType,
+              })
+              .from(catalogItemVariationsTable)
+              .where(
+                  eq(catalogItemVariationsTable.variationId, lineItem.itemId),
+              )
+              .limit(1)
+        : [];
+    if (!row) {
+        throw new InvalidOrderError(`Unknown variation ${lineItem.itemId}`);
+    }
+    const catalogPrice = parseMoney(row.priceMoney);
+    if (row.pricingType !== "VARIABLE") return catalogPrice;
+    if (!clientPrice?.amount || clientPrice.amount <= 0n) {
+        throw new InvalidOrderError(
+            `A positive price is required for ${lineItem.itemId}`,
+        );
+    }
+    if (
+        catalogPrice?.currency &&
+        clientPrice.currency !== catalogPrice.currency
+    ) {
+        throw new InvalidOrderError(
+            `Price currency must be ${catalogPrice.currency}`,
+        );
+    }
+    return clientPrice;
+}
+
+/**
  * Computes order totals from the local catalog.
  * @param order the order to price, with lineItems already set
  * @returns the priced order, or null if it has no line items
  */
-async function createOrder(order: Order): Promise<Order | undefined | null> {
+async function createOrder(
+    order: Order,
+    options: CreateOrderOptions = {},
+): Promise<Order | undefined | null> {
     if (!order.lineItems || order.lineItems.length === 0) {
         return null;
     }
@@ -148,39 +199,18 @@ async function createOrder(order: Order): Promise<Order | undefined | null> {
             : undefined;
         let unitPrice = clientPrice;
 
-        if (lineItem.itemId) {
+        if (options.catalogPricing) {
+            unitPrice = await catalogPricedLine(lineItem, clientPrice);
+        } else if (!unitPrice?.amount && lineItem.itemId) {
+            // Staff till: a client price wins, the catalog fills a gap.
             const [variationRow] = await drizzleDB
-                .select({
-                    priceMoney: catalogItemVariationsTable.priceMoney,
-                    pricingType: catalogItemVariationsTable.pricingType,
-                })
+                .select({ priceMoney: catalogItemVariationsTable.priceMoney })
                 .from(catalogItemVariationsTable)
                 .where(
                     eq(catalogItemVariationsTable.variationId, lineItem.itemId),
                 )
                 .limit(1);
-            if (variationRow) {
-                const catalogPrice = parseMoney(variationRow.priceMoney);
-                if (variationRow.pricingType === "VARIABLE") {
-                    // The customer names the price (e.g. a donation).
-                    if (!clientPrice?.amount || clientPrice.amount <= 0n) {
-                        throw new InvalidOrderError(
-                            `A positive price is required for ${lineItem.itemId}`,
-                        );
-                    }
-                    if (
-                        catalogPrice?.currency &&
-                        clientPrice.currency !== catalogPrice.currency
-                    ) {
-                        throw new InvalidOrderError(
-                            `Price currency must be ${catalogPrice.currency}`,
-                        );
-                    }
-                } else {
-                    // Fixed price: the catalog decides, the client cannot.
-                    unitPrice = catalogPrice;
-                }
-            }
+            unitPrice = parseMoney(variationRow?.priceMoney);
         }
 
         if (!unitPrice?.amount) continue;

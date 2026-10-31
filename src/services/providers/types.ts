@@ -115,8 +115,21 @@ export class InvalidOrderError extends Error {
     }
 }
 
+/** How a provider should treat an order being created. */
+export interface CreateOrderOptions {
+    /**
+     * Online orders: price every line from the catalog. FIXED variations
+     * ignore any client price, VARIABLE ones validate and use it, unknown
+     * variations are rejected. Unset for the staff till.
+     */
+    catalogPricing?: boolean;
+}
+
 export interface PaymentProvider {
-    createOrder(order: Order): Promise<Order | undefined | null>;
+    createOrder(
+        order: Order,
+        options?: CreateOrderOptions,
+    ): Promise<Order | undefined | null>;
     fetchOrder(orderId: string): Promise<Order | undefined | null>;
     createTerminalCheckout?(
         orderId: string,
