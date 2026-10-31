@@ -16,7 +16,7 @@ import {
 import { getLocationById } from "@/services/db/locations";
 import { type IConfigDevice } from "@tessellatepos/sdk";
 import { getParamValue } from "@/utils/expressHelpers";
-import { requireScope } from "@/middleware/authenticate";
+import { hasScope, requireScope } from "@/middleware/authenticate";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 import { FixedWindowLimiter, rateLimit } from "@/utils/rateLimiter";
 import { deviceTypeEnum } from "@/services/db/schema";
@@ -227,9 +227,12 @@ configDeviceRouter.put(
     },
 );
 
+// Staff running a local till need their till's own record, but not the device
+// list (it carries pairing codes), so locations:read alone may read a LOCAL
+// device at one of the principal's locations.
 configDeviceRouter.get(
     "/:deviceId",
-    requireScope("devices:read"),
+    requireScope("devices:read", "locations:read"),
     async (req: Request, res: Response) => {
         const deviceId = getParamValue(req.params.deviceId);
 
@@ -242,6 +245,20 @@ configDeviceRouter.get(
 
         logger.info(`Received GET request for device ID: ${deviceId}`);
         const config = await getConfigDeviceByID(deviceId);
+
+        const principal = req.principal;
+        if (principal && !hasScope(principal, "devices:read")) {
+            const allowed = principal.location_ids;
+            const visible =
+                config?.device_type === "LOCAL" &&
+                (allowed === "all" ||
+                    allowed.includes(config.square_location ?? ""));
+            if (!visible) {
+                res.status(403).json({ message: "Forbidden" });
+                return;
+            }
+        }
+
         res.json(config && withoutTokenHash(config));
     },
 );

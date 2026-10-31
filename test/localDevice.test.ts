@@ -10,6 +10,7 @@ import { createAuth } from "@/services/auth";
 import { createApp, mountApiRoutes } from "@/app";
 import { TessellatePluginRegistry } from "@/utils/registry/plugin/pluginRegistry";
 import {
+    createConfigDevice,
     deleteConfigDevice,
     getConfigDeviceByID,
     getLocalDeviceForLocation,
@@ -371,6 +372,48 @@ describe("LOCAL devices (cash-only tills in a staff browser)", () => {
             );
             assert.equal(reader.status, 400);
             assert.equal(reader.body.message, "Local tills take cash only");
+        });
+    });
+    describe("reading a till's own record", () => {
+        it("lets any staff role read a LOCAL till but not hardware devices", async () => {
+            const location = await newLocation(`Read ${suffix}`);
+            const till = await call(
+                "owner",
+                "POST",
+                "/api/v1/config/devices/local",
+                { locationId: location.id },
+            );
+            deviceIds.push(till.body.id);
+            const hardware = await createConfigDevice();
+            deviceIds.push(hardware.id);
+
+            for (const role of ["cashier", "viewer"] as const) {
+                const own = await call(
+                    role,
+                    "GET",
+                    `/api/v1/config/devices/${till.body.id}`,
+                );
+                assert.equal(own.status, 200, role);
+                assert.equal(own.body.device_type, "LOCAL");
+                assert.equal(own.body.pairing_code, null);
+
+                const other = await call(
+                    role,
+                    "GET",
+                    `/api/v1/config/devices/${hardware.id}`,
+                );
+                assert.equal(other.status, 403, role);
+
+                const list = await call(role, "GET", "/api/v1/config/devices");
+                assert.equal(list.status, 403, role);
+            }
+
+            const manager = await call(
+                "manager",
+                "GET",
+                `/api/v1/config/devices/${hardware.id}`,
+            );
+            assert.equal(manager.status, 200);
         });
     });
 });
