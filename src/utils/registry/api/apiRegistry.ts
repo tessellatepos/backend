@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { resolvePluginAsset } from "@/utils/pluginAssets";
 import path from "node:path";
 import type { Express, RequestHandler } from "express";
 import { Logger } from "tslog";
@@ -44,17 +45,20 @@ export class TessellateApiRegistry {
             "/plugins/:pluginName/assets/:filename",
             (req, res, next) => {
                 const { pluginName, filename } = req.params;
-                const filePath = path.join(
+                const filePath = resolvePluginAsset(
                     PLUGIN_DIR,
                     pluginName,
-                    "dist",
                     filename,
                 );
+                if (!filePath) {
+                    res.status(404).end();
+                    return;
+                }
                 if (!existsSync(filePath)) {
                     next();
                     return;
                 }
-                res.sendFile(path.resolve(filePath), (err) => {
+                res.sendFile(filePath, (err) => {
                     if (err) next();
                 });
             },
