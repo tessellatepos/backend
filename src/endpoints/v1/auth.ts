@@ -1,4 +1,4 @@
-import { getAuth } from "@/services/auth";
+import { CLIENT_IP_HEADER, getAuth } from "@/services/auth";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 import { toNodeHandler } from "better-auth/node";
 import express from "express";
@@ -102,5 +102,7 @@ authRouter.delete(
 // Resolve the instance per request: it is built after plugins load and may be
 // rebuilt later.
 authRouter.all("/*splat", (req, res, next) => {
+    // Always overwrite: whatever the client sent under this name is ignored.
+    req.headers[CLIENT_IP_HEADER] = clientKey(req);
     void toNodeHandler(getAuth())(req, res).catch(next);
 });

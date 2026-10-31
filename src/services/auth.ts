@@ -10,6 +10,27 @@ import { createAccessGate } from "@/auth/accessGate";
 /** Where the auth router is mounted; better-auth must agree with Express. */
 export const AUTH_BASE_PATH = "/api/v1/auth";
 
+/**
+ * Header the /auth route stamps with Express's `req.ip` before better-auth
+ * sees the request. better-auth only reads headers (never the socket) for the
+ * client IP its rate limiter keys on, and its default `x-forwarded-for` is
+ * client-controlled: rotating it would dodge the limit when the backend is
+ * reachable directly, and behind a proxy that appends to it every client
+ * would share the proxy's bucket. `req.ip` already follows TRUST_PROXY (the
+ * socket address with no trusted proxy, the first untrusted hop otherwise),
+ * so better-auth is told to read only this header, which the route overwrites.
+ */
+export const CLIENT_IP_HEADER = "x-tessellate-client-ip";
+
+/**
+ * better-auth's sign-in rate limit (3 per 10 s on /sign-in/*, 100 per 10 s
+ * elsewhere, per client IP) is on everywhere except under NODE_ENV=test,
+ * where the suite signs in repeatedly from one address.
+ */
+function rateLimitEnabled(): boolean {
+    return process.env.NODE_ENV !== "test";
+}
+
 type GenericOAuthConfig = Parameters<typeof genericOAuth>[0]["config"];
 
 /** Extras that are only known after plugins have loaded. */
@@ -54,6 +75,8 @@ function buildAuth(options: CreateAuthOptions = {}) {
         // Runs for every create, link and OAuth sign-in: the role safety rule.
         user: { validateUserInfo: createAccessGate() },
         socialProviders: options.socialProviders,
+        rateLimit: { enabled: rateLimitEnabled() },
+        advanced: { ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] } },
         plugins: [
             username(),
             admin({
