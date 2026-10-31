@@ -74,6 +74,7 @@ export function toApiCredential(row: CredentialRow): ApiCredential {
         created_by: row.created_by,
         created_at: row.created_at.toISOString(),
         last_used_at: row.last_used_at?.toISOString() ?? null,
+        ...(row.revoked_at ? { revoked_at: row.revoked_at.toISOString() } : {}),
     };
 }
 

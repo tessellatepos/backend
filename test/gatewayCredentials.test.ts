@@ -148,7 +148,9 @@ describe("gateway credentials service", () => {
 
     it("refuses a revoked credential", async () => {
         const result = await make();
-        await revokeCredential(result.client_id);
+        assert.equal(result.credential.revoked_at, undefined);
+        const revoked = await revokeCredential(result.client_id);
+        assert.match(revoked.revoked_at ?? "", /^\d{4}-/);
         assert.equal(
             await authenticateCredential(
                 result.client_id,
