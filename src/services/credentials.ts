@@ -5,7 +5,7 @@
  * deliveries and is stored encrypted.
  */
 import { isIP } from "node:net";
-import { isBlockedAddress } from "@/gateway/webhooks/ssrf";
+import { isBlockedAddress, loopbackHttpAllowed } from "@/gateway/webhooks/ssrf";
 import { createHash, randomBytes } from "node:crypto";
 import { Logger } from "tslog";
 import {
@@ -165,8 +165,8 @@ function validateOrigins(origins: unknown): string[] {
 }
 
 /**
- * Validates a webhook URL: https, or http to a loopback host for local
- * development. No credentials in the URL.
+ * Validates a webhook URL: https, or (outside production) http to a loopback
+ * host for local development. No credentials in the URL.
  * @param value the URL, or undefined/null to clear it
  * @returns the normalised URL, or null
  */
@@ -178,16 +178,16 @@ export function validateWebhookUrl(value: unknown): string | null {
     } catch {
         throw new CredentialValidationError("webhook_url is not a valid URL");
     }
-    const ok =
-        url.protocol === "https:" ||
-        (url.protocol === "http:" && isLoopback(url.hostname));
+    const devLoopback =
+        url.protocol === "http:" &&
+        isLoopback(url.hostname) &&
+        loopbackHttpAllowed();
+    const ok = url.protocol === "https:" || devLoopback;
     // Private, link-local and metadata addresses are never a webhook target
     // (names are checked again at delivery, when they are resolved).
     const literal = url.hostname.replace(/^\[|\]$/g, "");
     const linkLocal =
-        isIP(literal) !== 0 &&
-        !isLoopback(url.hostname) &&
-        isBlockedAddress(literal);
+        isIP(literal) !== 0 && !devLoopback && isBlockedAddress(literal);
     if (!ok || linkLocal || url.username || url.password) {
         throw new CredentialValidationError(
             "webhook_url must be https (http only to localhost)",
