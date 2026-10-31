@@ -14,7 +14,16 @@ export interface WebhookEventSpec {
     /** A credential needs this read scope to receive the event. */
     scope: Scope;
     /** Builds the public data for a host event's arguments, or null to drop it. */
-    toData(args: unknown[]): { data: unknown; locationId?: string } | null;
+    toData(args: unknown[]): {
+        data: unknown;
+        locationId?: string;
+        /**
+         * Set for order and invoice events: the order's id or reference id.
+         * Only the credential that created that order receives the event,
+         * as for the order routes. Staff orders have no owner, so no one.
+         */
+        orderRef?: string;
+    } | null;
 }
 
 function parseWith(schema: z.ZodType, value: unknown) {
@@ -33,6 +42,7 @@ function orderData(order: unknown) {
     return {
         data: JSON.parse(JSON.stringify(parsed.data, bigintReplacer)),
         locationId: parsed.data.locationId,
+        orderRef: parsed.data.referenceId ?? parsed.data.id ?? "",
     };
 }
 
@@ -62,6 +72,10 @@ function invoiceData(args: unknown[]) {
     return {
         data: JSON.parse(JSON.stringify(parsed.data, bigintReplacer)),
         locationId: order.locationId,
+        orderRef:
+            wire.order_reference ??
+            (order as { referenceId?: string }).referenceId ??
+            "",
     };
 }
 
