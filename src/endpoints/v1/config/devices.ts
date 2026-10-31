@@ -3,7 +3,9 @@ import { Request, Response, Router } from "express";
 import { Logger } from "tslog";
 import {
     createConfigDevice,
+    createLocalDevice,
     getConfigDeviceByPairingCode,
+    getLocalDeviceForLocation,
     generatePairingCode,
     updateConfigDevice,
     deleteConfigDevice,
@@ -11,6 +13,7 @@ import {
     getAllConfigDevices,
     withoutTokenHash,
 } from "@/services/db/configDevice";
+import { getLocationById } from "@/services/db/locations";
 import { type IConfigDevice } from "@tessellatepos/sdk";
 import { getParamValue } from "@/utils/expressHelpers";
 import { requireScope } from "@/middleware/authenticate";
@@ -20,6 +23,8 @@ import { deviceTypeEnum } from "@/services/db/schema";
 import { getActiveProvider } from "@/services/providers";
 
 const DEVICE_TYPES = deviceTypeEnum.enumValues;
+/** Types a hardware pairing may set. A LOCAL till has no hardware to pair. */
+const PAIRABLE_TYPES = DEVICE_TYPES.filter((type) => type !== "LOCAL");
 
 const configDeviceRouter: Router = express.Router();
 
@@ -185,12 +190,12 @@ configDeviceRouter.put(
         if (
             updatedConfig.device_type !== undefined &&
             updatedConfig.device_type !== null &&
-            !(DEVICE_TYPES as readonly unknown[]).includes(
+            !(PAIRABLE_TYPES as readonly unknown[]).includes(
                 updatedConfig.device_type,
             )
         ) {
             res.status(400).json({
-                message: `device_type must be one of ${DEVICE_TYPES.join(", ")}`,
+                message: `device_type must be one of ${PAIRABLE_TYPES.join(", ")}`,
             });
             return;
         }
@@ -238,6 +243,36 @@ configDeviceRouter.get(
         logger.info(`Received GET request for device ID: ${deviceId}`);
         const config = await getConfigDeviceByID(deviceId);
         res.json(config && withoutTokenHash(config));
+    },
+);
+
+// Creates the cash-only till for a location, or returns the one it already
+// has. Any provider's location id works. Declared before "/:deviceId" so the
+// word "local" is not taken for a device id.
+configDeviceRouter.post(
+    "/local",
+    requireScope("devices:admin"),
+    async (req: Request, res: Response) => {
+        const locationId: unknown = req.body?.locationId;
+        if (typeof locationId !== "string" || !locationId) {
+            res.status(400).json({ message: "locationId is required" });
+            return;
+        }
+
+        if (!(await getLocationById(locationId))) {
+            res.status(404).json({ message: "Location not found" });
+            return;
+        }
+
+        const existing = await getLocalDeviceForLocation(locationId);
+        if (existing) {
+            res.status(200).json(withoutTokenHash(existing));
+            return;
+        }
+
+        const device = await createLocalDevice(locationId);
+        logger.info(`Created LOCAL device ${device.id}`);
+        res.status(201).json(withoutTokenHash(device));
     },
 );
 
@@ -317,6 +352,14 @@ configDeviceRouter.post(
         if (!config) {
             res.status(404).json({
                 message: "Device configuration does not exist.",
+            });
+            return;
+        }
+
+        // A LOCAL till has no card hardware; pairing would turn it into one.
+        if (config.device_type === "LOCAL") {
+            res.status(400).json({
+                message: "Local tills have no terminal to pair",
             });
             return;
         }

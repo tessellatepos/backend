@@ -86,7 +86,7 @@ export async function resolveDeviceToken(
 ): Promise<Principal | null> {
     if (!token.startsWith(DEVICE_TOKEN_PREFIX)) return null;
     const device = await getConfigDeviceByTokenHash(hashDeviceToken(token));
-    if (!device?.paired_at) return null;
+    if (!device?.paired_at || device.device_type === "LOCAL") return null;
     return {
         kind: "device",
         id: device.id,

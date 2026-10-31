@@ -7,8 +7,10 @@ import {
     createLocalLocation,
     getLocationById,
     getLocations,
+    removeLocalStorefront,
     removeLocation,
 } from "@/services/db/locations";
+import { createLocalDevice, getLocalDevices } from "@/services/db/configDevice";
 import { getParamValue } from "@/utils/expressHelpers";
 import { requireScope } from "@/middleware/authenticate";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
@@ -24,11 +26,19 @@ export const configStorefrontsv1Endpoint: ITessellateApiRouter = {
 };
 
 // Lists the persisted locations (the same data as /locations), with whether
-// this provider lets the owner manage them.
+// this provider lets the owner manage them. Each carries the id of its LOCAL
+// till as deviceId, or null when it has none.
 storefrontRouter.get("/", requireScope("settings:read"), async (_req, res) => {
     try {
         const info = providerInfo[getActiveProviderId()];
-        const storefronts = await getLocations();
+        const locations = await getLocations();
+        const tillByLocation = new Map(
+            (await getLocalDevices()).map((d) => [d.square_location, d.id]),
+        );
+        const storefronts = locations.map((location) => ({
+            ...location,
+            deviceId: tillByLocation.get(location.id) ?? null,
+        }));
         res.json({ canManage: info.canManageStorefronts, storefronts });
     } catch (err) {
         logger.error("Failed to list storefronts", err);
@@ -64,7 +74,18 @@ storefrontRouter.post("/", requireScope("settings:admin"), async (req, res) => {
             currency: currency as CurrencyCode,
             country: country as CountryCode,
         });
-        res.status(201).json(storefront);
+        // The storefront and its till go together. The helpers take no
+        // transaction, so a failed till creation soft deletes the new
+        // location again; it then never shows in any list.
+        let till;
+        try {
+            till = await createLocalDevice(storefront.id);
+        } catch (err) {
+            logger.error("Failed to create till, removing the storefront", err);
+            await removeLocation(storefront.id);
+            throw err;
+        }
+        res.status(201).json({ ...storefront, deviceId: till.id });
     } catch (err) {
         logger.error("Failed to create storefront", err);
         res.status(500).json({ message: "Failed to create storefront" });
@@ -98,7 +119,8 @@ storefrontRouter.delete(
             return;
         }
 
-        await removeLocation(id);
+        // Removes the storefront and its till in one transaction.
+        await removeLocalStorefront(id);
         res.json({ message: "Storefront deleted" });
     },
 );

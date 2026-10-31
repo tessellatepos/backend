@@ -5,7 +5,10 @@ import {
     getActiveProviderId,
     providerInfo,
 } from "@/services/providers";
-import { getPairedDeviceByType } from "@/services/db/configDevice";
+import {
+    getConfigDeviceByID,
+    getPairedDeviceByType,
+} from "@/services/db/configDevice";
 import { getCustomer } from "@/services/customers";
 import { insertOrder, syncOrderFromSquare } from "@/services/db/orders";
 import { bigintReplacer } from "@tessellatepos/sdk";
@@ -19,6 +22,19 @@ import type { TessellatePluginRegistry } from "@/utils/registry/plugin/pluginReg
 const orderRouter: Router = express.Router();
 
 const logger = new Logger();
+
+/**
+ * Whether a till named in a request is a LOCAL till. Card tenders are refused
+ * for it under every provider: a LOCAL till is staff-browser cash only. The
+ * till names itself in the body, so this only restricts and never grants.
+ * @param deviceId the deviceId from the request body
+ * @returns true when the device is a LOCAL till
+ */
+async function isLocalTill(deviceId: unknown): Promise<boolean> {
+    if (typeof deviceId !== "string" || !deviceId) return false;
+    const device = await getConfigDeviceByID(deviceId);
+    return device?.device_type === "LOCAL";
+}
 
 export const ordersv1Endpoint: ITessellateApiRouter = {
     route_path: "/orders",
@@ -121,6 +137,13 @@ orderRouter.post(
         const provider = getActiveProvider();
         try {
             const orderId = req.params.orderId;
+
+            if (await isLocalTill(req.body?.deviceId)) {
+                res.status(400).json({
+                    message: "Local tills take cash only",
+                });
+                return;
+            }
 
             if (!provider.createTerminalCheckout) {
                 res.status(400).json({
@@ -387,6 +410,13 @@ orderRouter.post(
 
             if (!paymentId) {
                 res.status(400).json({ message: "Missing paymentId" });
+                return;
+            }
+
+            if (await isLocalTill(req.body?.deviceId)) {
+                res.status(400).json({
+                    message: "Local tills take cash only",
+                });
                 return;
             }
 

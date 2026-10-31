@@ -5,7 +5,10 @@ import type {
     Location,
     LocationHours,
 } from "@tessellatepos/sdk";
+import { and, isNull, eq } from "drizzle-orm";
 import { createLocalStore, emptyIfNull, nullIfEmpty } from "@/services/store";
+import { drizzleDB } from "@/services/db/postgres";
+import { deleteLocalDevicesForLocation } from "./configDevice";
 import { locationsTable } from "./schema";
 
 /** Hours for a location with none set yet. */
@@ -119,4 +122,28 @@ export async function createLocalLocation(input: {
  */
 export async function removeLocation(id: string): Promise<boolean> {
     return locationStore.remove(id);
+}
+
+/**
+ * Soft deletes a local storefront and deletes its LOCAL till in one
+ * transaction, so neither is removed without the other.
+ * @param id the location id
+ * @returns true if a live location was removed
+ */
+export async function removeLocalStorefront(id: string): Promise<boolean> {
+    return drizzleDB.transaction(async (tx) => {
+        const removed = await tx
+            .update(locationsTable)
+            .set({ deletedAt: new Date(), updatedAt: new Date() })
+            .where(
+                and(
+                    eq(locationsTable.id, id),
+                    isNull(locationsTable.deletedAt),
+                ),
+            )
+            .returning({ id: locationsTable.id });
+        if (removed.length === 0) return false;
+        await deleteLocalDevicesForLocation(id, tx);
+        return true;
+    });
 }

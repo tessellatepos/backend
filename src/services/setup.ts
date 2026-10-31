@@ -1,4 +1,4 @@
-import { count, eq, isNotNull } from "drizzle-orm";
+import { and, count, eq, isNotNull, isNull, or, ne } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
     COUNTRIES,
@@ -119,7 +119,17 @@ export async function getSetupStatus(): Promise<SetupStatus> {
             drizzleDB
                 .select({ n: count() })
                 .from(configDevicesTable)
-                .where(isNotNull(configDevicesTable.paired_at))
+                // A LOCAL till needs no hardware, so it does not count as a
+                // paired device for the setup checklist.
+                .where(
+                    and(
+                        isNotNull(configDevicesTable.paired_at),
+                        or(
+                            isNull(configDevicesTable.device_type),
+                            ne(configDevicesTable.device_type, "LOCAL"),
+                        ),
+                    ),
+                )
                 .then(([r]) => r.n),
             isAuthorized(),
         ]);

@@ -181,6 +181,13 @@ squareRouter.post(
                 res.status(403).json({ message: "Device is not paired" });
                 return;
             }
+            // A LOCAL till has no reader; it must not get a Square token.
+            if (device.device_type === "LOCAL") {
+                res.status(400).json({
+                    message: "Local tills have no mobile reader",
+                });
+                return;
+            }
 
             const token = await getShortLivedAccessToken();
 

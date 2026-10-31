@@ -7,6 +7,9 @@ import type { DeviceType } from "@tessellatepos/sdk";
 
 type TDrizzleDB = typeof drizzleDB;
 
+/** What the LOCAL helpers need, so they also run inside a transaction. */
+type TDeviceDB = Pick<TDrizzleDB, "select" | "insert" | "delete">;
+
 export async function createConfigDevice(db: TDrizzleDB = drizzleDB) {
     const deviceConfig: typeof configDevicesTable.$inferInsert = {
         id: generateDeviceNanoID(),
@@ -77,12 +80,92 @@ export function withoutTokenHash<T extends object>(
     return rest as Omit<T, "device_token_hash">;
 }
 
+/**
+ * Creates a LOCAL till pinned to a location. It is paired from the start, so
+ * it has no pairing code and no hardware id.
+ * @param locationId the location the till sells for (any provider's id)
+ * @returns the inserted row (it has no token hash)
+ */
+export async function createLocalDevice(
+    locationId: string,
+    db: TDeviceDB = drizzleDB,
+) {
+    const now = new Date();
+    const deviceConfig: typeof configDevicesTable.$inferInsert = {
+        id: generateDeviceNanoID(),
+        created_at: now,
+        pairing_code: null,
+        code_created_at: null,
+        paired_at: now,
+        square_location: locationId,
+        customer_facing: false,
+        device_hardware_id: null,
+        device_type: "LOCAL",
+    };
+    await db.insert(configDevicesTable).values(deviceConfig);
+    return deviceConfig;
+}
+
+/**
+ * The LOCAL device pinned to a location, if there is one. The endpoint that
+ * creates them is idempotent, so there is normally at most one.
+ * @param locationId the location id
+ * @returns the device row, or null
+ */
+export async function getLocalDeviceForLocation(
+    locationId: string,
+    db: TDeviceDB = drizzleDB,
+) {
+    const rows = await db
+        .select()
+        .from(configDevicesTable)
+        .where(
+            and(
+                eq(configDevicesTable.device_type, "LOCAL"),
+                eq(configDevicesTable.square_location, locationId),
+            ),
+        )
+        .limit(1);
+    return rows[0] || null;
+}
+
+/**
+ * Every LOCAL device, so a list of locations can show each one's till.
+ * @returns the LOCAL device rows
+ */
+export async function getLocalDevices(db: TDeviceDB = drizzleDB) {
+    return db
+        .select()
+        .from(configDevicesTable)
+        .where(eq(configDevicesTable.device_type, "LOCAL"));
+}
+
+/**
+ * Deletes the LOCAL devices pinned to a location. Takes a transaction, so a
+ * storefront delete can remove its till atomically.
+ * @param locationId the location id
+ */
+export async function deleteLocalDevicesForLocation(
+    locationId: string,
+    db: TDeviceDB = drizzleDB,
+) {
+    await db
+        .delete(configDevicesTable)
+        .where(
+            and(
+                eq(configDevicesTable.device_type, "LOCAL"),
+                eq(configDevicesTable.square_location, locationId),
+            ),
+        );
+}
+
 export async function getPairedDeviceByType(
     deviceType: DeviceType,
     db: TDrizzleDB = drizzleDB,
 ) {
     // TERMINAL devices pair through Square's own Device Code flow (square_device_id);
     // MOBILE_READER devices pair through our OTP flow (device_hardware_id).
+    // LOCAL devices are filtered out by device_type and never match here.
     const pairingIdentifierColumn =
         deviceType === "TERMINAL"
             ? configDevicesTable.square_device_id

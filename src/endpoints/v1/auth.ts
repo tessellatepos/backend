@@ -69,6 +69,14 @@ authRouter.post("/device-token", async (req, res) => {
         res.status(401).json({ message: "Unauthorized" });
         return;
     }
+    // A LOCAL till runs in a staff browser on the staff session; it has no
+    // token. Refused even for devices:admin.
+    if (device?.device_type === "LOCAL") {
+        res.status(400).json({
+            message: "Local tills do not use device tokens",
+        });
+        return;
+    }
     const token = await issueDeviceToken(deviceId);
     if (!token) {
         res.status(404).json({ message: "Device not found" });

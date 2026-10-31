@@ -10,9 +10,11 @@ import {
     primaryKey,
 } from "drizzle-orm/pg-core";
 
+// LOCAL is a till that runs in a staff browser: no pairing code, no hardware.
 export const deviceTypeEnum = pgEnum("device_type", [
     "TERMINAL",
     "MOBILE_READER",
+    "LOCAL",
 ]);
 
 export const pricingTypeEnum = pgEnum("pricing_type", ["FIXED", "VARIABLE"]);
