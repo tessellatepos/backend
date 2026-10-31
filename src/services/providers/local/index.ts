@@ -11,11 +11,13 @@ import type {
     Order,
     Tender,
 } from "@tessellatepos/sdk";
+import { Logger } from "tslog";
 import { drizzleDB } from "@/services/db/postgres";
 import { catalogItemVariationsTable, ordersTable } from "@/services/db/schema";
 import { getCatalogByLocation } from "@/services/db/catalog";
 import { customerStore, searchCustomers } from "@/services/db/customers";
 import { getLocations } from "@/services/db/locations";
+import { listLiveCheckouts } from "@/services/db/onlinePayments";
 import {
     getOrderById,
     openUnpaidOrder,
@@ -54,6 +56,38 @@ function versionMatches(currentVersion: number | null | undefined) {
         : eq(ordersTable.version, currentVersion);
 }
 
+const logger = new Logger({ name: "local-provider" });
+
+/**
+ * After staff take payment in person, a hosted checkout the shopper started
+ * earlier may still be open. The processor interface has no way to void a
+ * checkout, so the attempt cannot be closed here: a later payment on it is
+ * recorded and logged as needing a refund by the webhook path. This only makes
+ * the overlap visible.
+ * @param orderId the order's reference id
+ * @param now the clock (tests inject one)
+ * @param warn where the warning goes (tests inject one)
+ */
+export async function warnIfOnlineCheckoutLive(
+    orderId: string,
+    now: Date = new Date(),
+    warn: (message: string) => void = (m) => logger.warn(m),
+): Promise<void> {
+    try {
+        const live = await listLiveCheckouts(orderId, now);
+        if (live.length > 0) {
+            warn(
+                `Order ${orderId} was paid in person while a hosted checkout is still open (${live.length}); it cannot be voided, a payment on it would need a refund`,
+            );
+        }
+    } catch (err) {
+        logger.error(
+            `Could not check live checkouts for order ${orderId}`,
+            err,
+        );
+    }
+}
+
 /**
  * Marks an order paid with a card tender for its full total and returns
  * whether it succeeded. Uses optimistic locking via the `version` column
@@ -63,11 +97,20 @@ function versionMatches(currentVersion: number | null | undefined) {
  * @returns true if the order was found and marked paid
  */
 async function markOrderPaidWithCard(orderId: string): Promise<boolean> {
+    const paid = await markOrderPaidWithCardTx(orderId);
+    if (paid) await warnIfOnlineCheckoutLive(orderId);
+    return paid;
+}
+
+async function markOrderPaidWithCardTx(orderId: string): Promise<boolean> {
     return drizzleDB.transaction(async (tx) => {
         const row = await getOrderById(orderId, tx);
         if (!row) return false;
         if (row.state === "COMPLETED") {
             throw new OrderConflictError("Order is already paid");
+        }
+        if (row.state === "CANCELED") {
+            throw new OrderConflictError("Order is canceled");
         }
 
         const orderAmount = parseMoney(row.totalMoney);
@@ -284,11 +327,14 @@ async function payCash(
     const changeAmount = amountTendered.amount - orderAmount.amount;
     if (changeAmount < 0n) return null;
 
-    return drizzleDB.transaction(async (tx) => {
+    const change = await drizzleDB.transaction(async (tx) => {
         const row = await getOrderById(orderId, tx);
         if (!row) return null;
         if (row.state === "COMPLETED") {
             throw new OrderConflictError("Order is already paid");
+        }
+        if (row.state === "CANCELED") {
+            throw new OrderConflictError("Order is canceled");
         }
 
         const changeBackMoney: Money = {
@@ -335,6 +381,8 @@ async function payCash(
 
         return changeBackMoney;
     });
+    if (change) await warnIfOnlineCheckoutLive(orderId);
+    return change;
 }
 
 /**

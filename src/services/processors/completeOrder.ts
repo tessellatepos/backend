@@ -16,7 +16,7 @@ export type CompleteOrderResult =
     /** This call moved the order to COMPLETED and emitted the events. */
     | { outcome: "completed"; order: Order }
     /** A concurrent or earlier call already did; nothing was emitted. */
-    | { outcome: "already_completed" }
+    | { outcome: "already_completed"; transactionIds: string[] }
     /** Canceled (e.g. expired) before the money arrived; left as it is. */
     | { outcome: "canceled" }
     | { outcome: "amount_mismatch" }
@@ -54,7 +54,12 @@ export async function completeOrderFromPayment(
                 .for("update");
             if (!row) return { outcome: "not_found" };
             if (row.state === "COMPLETED") {
-                return { outcome: "already_completed" };
+                return {
+                    outcome: "already_completed",
+                    transactionIds: (
+                        (row.tenders as Tender[] | null) ?? []
+                    ).map((t) => t.transactionId),
+                };
             }
             if (row.state === "CANCELED") return { outcome: "canceled" };
 

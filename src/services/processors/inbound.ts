@@ -103,9 +103,20 @@ export async function applyProcessorEvents(
                 await markSeen(processorId, event.id);
                 continue;
             }
-            if (result.outcome === "canceled") {
-                logger.warn(
-                    `Order ${attempt.order_reference} was paid after it was canceled; needs a refund`,
+            // Money arrived for an order that can no longer take it. The
+            // event is still recorded below; this makes it visible.
+            const late =
+                result.outcome === "canceled" ||
+                (result.outcome === "already_completed" &&
+                    attempt.status !== "paid" &&
+                    !(
+                        event.payment_id &&
+                        result.transactionIds.includes(event.payment_id)
+                    ));
+            if (late) {
+                const paid = event.amount ?? parseMoney(attempt.amount);
+                logger.error(
+                    `late payment, needs refund: order ${attempt.order_reference} was already ${result.outcome === "canceled" ? "canceled" : "completed"} when ${processorId} reported ${paid?.amount ?? "?"} ${paid?.currency ?? ""} paid (attempt ${attempt.id}, event ${event.id})`,
                 );
             }
         }

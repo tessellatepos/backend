@@ -31,6 +31,8 @@ import {
 import type { ordersTable } from "@/services/db/schema";
 import {
     insertOnlinePayment,
+    isLiveAttempt,
+    listLiveCheckouts,
     listOnlinePayments,
     listOnlinePaymentsForOrders,
     type OnlinePaymentRow,
@@ -147,22 +149,7 @@ export async function nonOnlineVariations(
     return { unknown, notOnline };
 }
 
-const ACTIVE_INVOICE = ["draft", "sent", "viewed", "overdue"];
-
-/**
- * Whether an attempt can still be paid: a checkout that has not expired, or
- * an open invoice.
- * @param attempt the attempt
- * @param now the current time
- * @returns true when the shopper could still pay it
- */
-export function isLiveAttempt(attempt: OnlinePaymentRow, now: Date): boolean {
-    if (attempt.kind === "invoice") {
-        return ACTIVE_INVOICE.includes(attempt.status);
-    }
-    if (attempt.status !== "created") return false;
-    return !attempt.expires_at || attempt.expires_at > now;
-}
+export { isLiveAttempt };
 
 /**
  * The payment state of an order, derived from what happened to it.
@@ -473,16 +460,20 @@ export type CancelOutcome = { ok: true; order: Order } | Refusal;
 /**
  * Cancels an order that has not been paid. Idempotent: an order already
  * canceled answers as canceled. A paid order, one with a tender, or one that
- * was invoiced (the invoice has to be canceled first) is refused.
+ * was invoiced (the invoice has to be canceled first) is refused, and so is
+ * one with a hosted checkout the shopper could still pay (`payment_in_progress`),
+ * which would otherwise take money for a canceled order.
  * @param row the order
  * @param registry the plugin registry that receives `orderCancelled`
  * @param caller the request that asked for the cancel, for the plugin context
+ * @param now the clock (tests inject one)
  * @returns the canceled order, or why not
  */
 export async function cancelUnpaidOrder(
     row: OrderRow,
     registry: TessellatePluginRegistry,
     caller?: Pick<Request, "principal">,
+    now: () => Date = () => new Date(),
 ): Promise<CancelOutcome> {
     if (row.state === "CANCELED") return { ok: true, order: rowToOrder(row) };
     const attempts = await listOnlinePayments(row.referenceId);
@@ -503,8 +494,7 @@ export async function cancelUnpaidOrder(
     const invoices = attempts.filter((a) => a.kind === "invoice");
     if (
         row.invoicedAt &&
-        (invoices.length === 0 ||
-            invoices.some((a) => isLiveAttempt(a, new Date())))
+        (invoices.length === 0 || invoices.some((a) => isLiveAttempt(a, now())))
     ) {
         return refuse(
             409,
@@ -512,14 +502,35 @@ export async function cancelUnpaidOrder(
             "An invoiced order cannot be canceled here: cancel its invoice",
         );
     }
-    const canceled = await getActiveProvider().cancelOrder(
-        row.id ?? row.referenceId,
+    // Under the lock startCheckout takes, so a checkout cannot be created
+    // between the live-attempt check and the cancel.
+    const locked = await withRedisLock(
+        `gw:checkout-lock:${row.referenceId}`,
+        async (): Promise<Order | null | Refusal> => {
+            if ((await listLiveCheckouts(row.referenceId, now())).length > 0) {
+                return refuse(
+                    409,
+                    "payment_in_progress",
+                    "A payment for this order is in progress: wait for it to finish or expire",
+                );
+            }
+            return getActiveProvider().cancelOrder(row.id ?? row.referenceId);
+        },
     );
+    if (!locked) {
+        return refuse(
+            409,
+            "payment_in_progress",
+            "A checkout for this order is being created",
+        );
+    }
+    if (locked.value && "ok" in locked.value) return locked.value;
+    const canceled = locked.value;
     if (!canceled) {
         // A payment or another cancel won the race.
-        const now = await getOrderByAnyId(row.referenceId);
-        if (now?.state === "CANCELED") {
-            return { ok: true, order: rowToOrder(now) };
+        const fresh = await getOrderByAnyId(row.referenceId);
+        if (fresh?.state === "CANCELED") {
+            return { ok: true, order: rowToOrder(fresh) };
         }
         return refuse(
             409,

@@ -79,3 +79,35 @@ export async function listOnlinePaymentsForOrders(
         .where(inArray(onlinePaymentsTable.order_reference, orderReferences))
         .orderBy(onlinePaymentsTable.created_at);
 }
+
+const ACTIVE_INVOICE = ["draft", "sent", "viewed", "overdue"];
+
+/**
+ * Whether an attempt can still be paid: a checkout that has not expired, or
+ * an open invoice.
+ * @param attempt the attempt
+ * @param now the current time
+ * @returns true when the shopper could still pay it
+ */
+export function isLiveAttempt(attempt: OnlinePaymentRow, now: Date): boolean {
+    if (attempt.kind === "invoice") {
+        return ACTIVE_INVOICE.includes(attempt.status);
+    }
+    if (attempt.status !== "created") return false;
+    return !attempt.expires_at || attempt.expires_at > now;
+}
+
+/**
+ * @param orderReference an order's reference id
+ * @param now the current time
+ * @returns its hosted checkouts a shopper could still pay (status `created`,
+ * not expired), oldest first
+ */
+export async function listLiveCheckouts(
+    orderReference: string,
+    now: Date,
+): Promise<OnlinePaymentRow[]> {
+    return (await listOnlinePayments(orderReference)).filter(
+        (a) => a.kind === "checkout" && isLiveAttempt(a, now),
+    );
+}
