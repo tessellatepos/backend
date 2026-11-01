@@ -162,4 +162,23 @@ describe("cash payment on a LOCAL till", () => {
             assert.equal(res.status, 200, JSON.stringify(extra));
         }
     });
+
+    it("completes a zero-total order with no change due", async () => {
+        const free = {
+            ...order,
+            lineItems: [
+                {
+                    ...order.lineItems[0],
+                    priceMoney: { amount: "0", currency: "CAD" },
+                },
+            ],
+        };
+        const id = (await call("POST", "/orders/create", free)).body.id;
+        const res = await call("POST", `/orders/${id}/pay-cash`, {
+            amountTendered: "0",
+        });
+        assert.equal(res.status, 200, JSON.stringify(res.body));
+        assert.equal(res.body.order.state, "COMPLETED");
+        assert.equal(res.body.changeDue.amount, "0");
+    });
 });

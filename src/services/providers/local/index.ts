@@ -13,7 +13,11 @@ import type {
 } from "@tessellatepos/sdk";
 import { Logger } from "tslog";
 import { drizzleDB } from "@/services/db/postgres";
-import { catalogItemVariationsTable, ordersTable } from "@/services/db/schema";
+import {
+    catalogItemVariationsTable,
+    catalogItemsTable,
+    ordersTable,
+} from "@/services/db/schema";
 import { getCatalogByLocation } from "@/services/db/catalog";
 import { customerStore, searchCustomers } from "@/services/db/customers";
 import { getLocations } from "@/services/db/locations";
@@ -178,6 +182,12 @@ async function fetchLocations(): Promise<Location[]> {
 }
 
 /**
+ * The most one unit may cost on an online order: 1,000,000.00 in minor units,
+ * assuming two decimal places like the catalog import does.
+ */
+export const MAX_UNIT_PRICE = 100_000_000n;
+
+/**
  * Prices one line for an online order at a location: FIXED variations take
  * the catalog price (the location's override if it has one) and ignore the
  * client's; VARIABLE ones take the client's, which must
@@ -185,7 +195,7 @@ async function fetchLocations(): Promise<Location[]> {
  * @param lineItem the requested line
  * @param clientPrice the price the client sent, if any
  * @param locationId the order's location, for location price overrides
- * @returns the unit price to charge
+ * @returns the unit price to charge, the catalog name, and whether it is fixed
  */
 async function catalogPricedLine(
     lineItem: Order["lineItems"] extends (infer L)[] | null | undefined
@@ -193,16 +203,22 @@ async function catalogPricedLine(
         : never,
     clientPrice: Money | undefined,
     locationId: string | null | undefined,
-): Promise<Money | undefined> {
+): Promise<{ price: Money; name: string | null; fixed: boolean }> {
     const [row] = lineItem.itemId
         ? await drizzleDB
               .select({
+                  name: catalogItemVariationsTable.name,
+                  itemName: catalogItemsTable.name,
                   priceMoney: catalogItemVariationsTable.priceMoney,
                   pricingType: catalogItemVariationsTable.pricingType,
                   locationOverrides:
                       catalogItemVariationsTable.locationOverrides,
               })
               .from(catalogItemVariationsTable)
+              .innerJoin(
+                  catalogItemsTable,
+                  eq(catalogItemVariationsTable.itemId, catalogItemsTable.id),
+              )
               .where(
                   eq(catalogItemVariationsTable.variationId, lineItem.itemId),
               )
@@ -216,7 +232,15 @@ async function catalogPricedLine(
         row.locationOverrides as never,
         locationId,
     );
-    if (pricingType !== "VARIABLE") return catalogPrice;
+    const name = [row.itemName, row.name].filter(Boolean).join(" - ") || null;
+    if (pricingType !== "VARIABLE") {
+        if (!catalogPrice) {
+            throw new InvalidOrderError(
+                `${lineItem.itemId} has no price and cannot be ordered`,
+            );
+        }
+        return { price: catalogPrice, name, fixed: true };
+    }
     if (!clientPrice?.amount || clientPrice.amount <= 0n) {
         throw new InvalidOrderError(
             `A positive price is required for ${lineItem.itemId}`,
@@ -230,7 +254,12 @@ async function catalogPricedLine(
             `Price currency must be ${catalogPrice.currency}`,
         );
     }
-    return clientPrice;
+    if (clientPrice.amount > MAX_UNIT_PRICE) {
+        throw new InvalidOrderError(
+            `Price for ${lineItem.itemId} is above the limit`,
+        );
+    }
+    return { price: clientPrice, name, fixed: false };
 }
 
 /**
@@ -248,8 +277,11 @@ async function createOrder(
 
     let totalAmount = 0n;
     let currency: CurrencyCode = "CAD";
+    let currencySeen = false;
+    const lineItems: Order["lineItems"] = [];
 
     for (const lineItem of order.lineItems) {
+        let stored = lineItem;
         const quantity = BigInt(lineItem.quantity ?? 1n);
         const clientPrice = lineItem.priceMoney
             ? parseMoney(lineItem.priceMoney)
@@ -257,11 +289,22 @@ async function createOrder(
         let unitPrice = clientPrice;
 
         if (options.catalogPricing) {
-            unitPrice = await catalogPricedLine(
+            const priced = await catalogPricedLine(
                 lineItem,
                 clientPrice,
                 order.locationId,
             );
+            unitPrice = priced.price;
+            // Store what is charged: the client's price and name are not
+            // trusted for a fixed-price line.
+            if (priced.fixed) {
+                stored = {
+                    ...lineItem,
+                    name: priced.name ?? lineItem.name,
+                    priceMoney: priced.price,
+                    pricingType: "FIXED",
+                };
+            }
         } else if (!unitPrice?.amount && lineItem.itemId) {
             // Staff till: a client price wins, the catalog fills a gap.
             const [variationRow] = await drizzleDB
@@ -274,7 +317,16 @@ async function createOrder(
             unitPrice = parseMoney(variationRow?.priceMoney);
         }
 
+        lineItems.push(stored);
         if (!unitPrice?.amount) continue;
+        if (options.catalogPricing && currencySeen) {
+            if (unitPrice.currency !== currency) {
+                throw new InvalidOrderError(
+                    "All lines must be in the same currency",
+                );
+            }
+        }
+        currencySeen = true;
         currency = unitPrice.currency ?? currency;
         totalAmount += unitPrice.amount * quantity;
     }
@@ -284,6 +336,7 @@ async function createOrder(
 
     return {
         ...order,
+        ...(options.catalogPricing ? { lineItems } : {}),
         id,
         referenceId: order.referenceId ?? id,
         state: "OPEN",
@@ -336,7 +389,8 @@ async function payCash(
     amountTendered: Money,
     orderAmount: Money,
 ): Promise<Money | null> {
-    if (!amountTendered.amount || !orderAmount.amount) return null;
+    if (amountTendered.amount == null || orderAmount.amount == null)
+        return null;
 
     const changeAmount = amountTendered.amount - orderAmount.amount;
     if (changeAmount < 0n) return null;

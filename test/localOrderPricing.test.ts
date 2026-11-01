@@ -14,6 +14,8 @@ import { closeTestDb, setupTestDb } from "@/test/db";
 const ITEM = "PRICING-ITEM";
 const FIXED = "PRICING-FIXED";
 const VARIABLE = "PRICING-VARIABLE";
+const UNPRICED = "PRICING-UNPRICED";
+const USD = "PRICING-USD";
 const OVERRIDDEN = "PRICING-OVERRIDDEN";
 const OVERRIDE_TO_VARIABLE = "PRICING-OVERRIDE-VARIABLE";
 
@@ -52,6 +54,18 @@ describe("local provider order pricing", () => {
                 itemId: ITEM,
                 pricingType: "VARIABLE",
                 priceMoney: { amount: "0", currency: "CAD" },
+            },
+            {
+                variationId: UNPRICED,
+                itemId: ITEM,
+                pricingType: "FIXED",
+                priceMoney: null,
+            },
+            {
+                variationId: USD,
+                itemId: ITEM,
+                pricingType: "FIXED",
+                priceMoney: { amount: "100", currency: "USD" },
             },
             {
                 variationId: OVERRIDDEN,
@@ -159,5 +173,52 @@ describe("local provider order pricing", () => {
 
     it("leaves the staff till on the client price at an overridden location", async () => {
         assert.equal(await total([line(OVERRIDDEN, "1")], false, "LOC-B"), 2n);
+    });
+
+    it("rejects an unpriced fixed variation instead of making a free line", async () => {
+        await assert.rejects(total([line(UNPRICED)]), InvalidOrderError);
+        assert.equal(await total([line(UNPRICED)], false), 0n);
+    });
+
+    it("rejects lines in different currencies, and prices a single foreign currency", async () => {
+        await assert.rejects(
+            total([line(FIXED), line(USD)]),
+            InvalidOrderError,
+        );
+        assert.equal(await total([line(USD)]), 200n);
+    });
+
+    it("caps a variable price at 1,000,000.00", async () => {
+        assert.equal(
+            await total([{ ...line(VARIABLE, "100000000"), quantity: 1n }]),
+            100000000n,
+        );
+        await assert.rejects(
+            total([line(VARIABLE, "100000001")]),
+            InvalidOrderError,
+        );
+    });
+
+    it("stores and returns the catalog price and name for fixed lines, not the client's", async () => {
+        const order = await localProvider.createOrder(
+            {
+                lineItems: [
+                    { ...line(FIXED, "1"), name: "Cheap" },
+                    line(VARIABLE, "250"),
+                ],
+            } as never,
+            { catalogPricing: true },
+        );
+        const [fixed, variable] = order?.lineItems ?? [];
+        assert.equal(fixed.priceMoney?.amount, 500n);
+        assert.equal(fixed.pricingType, "FIXED");
+        assert.equal(fixed.name, "Pricing");
+        assert.equal(String(variable.priceMoney?.amount), "250");
+        // The staff till's lines come back as sent.
+        const staff = await localProvider.createOrder({
+            lineItems: [{ ...line(FIXED, "1"), name: "Cheap" }],
+        } as never);
+        assert.equal(staff?.lineItems?.[0].priceMoney?.amount, "1");
+        assert.equal(staff?.lineItems?.[0].name, "Cheap");
     });
 });
