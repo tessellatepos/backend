@@ -114,11 +114,13 @@ function refuseOrderAccess(
 }
 
 /**
- * Reads an integer sent as a JSON number or a digit string.
+ * Reads an integer sent as a JSON number or a digit string (the gateway
+ * hands over bigints already).
  * @param value the raw value
  * @returns the integer, or null when it is anything else
  */
 function wholeNumber(value: unknown): bigint | null {
+    if (typeof value === "bigint") return value;
     if (typeof value === "number") {
         return Number.isSafeInteger(value) ? BigInt(value) : null;
     }
