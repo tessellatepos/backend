@@ -1,5 +1,6 @@
 import { Plugin } from "@/plugin/plugin";
 import { TessellatePluginApiRegistry } from "@/utils/registry/api/pluginApiRegistry";
+import type { PluginPermissionProvider } from "@tessellatepos/plugin-sdk";
 import type {
     HookDefinition,
     HookResult,
@@ -10,6 +11,22 @@ import { TessellatePluginDatabaseRegistry } from "@/utils/registry/database/plug
 import { authProviders } from "@/auth/providers";
 
 const logger = new Logger();
+
+/** Narrows hook/event dispatch to plugins holding a permission. */
+export interface DispatchOptions {
+    /** Only plugins granted this permission are called. */
+    requires?: keyof PluginPermissionProvider;
+}
+
+/** Options for hooks whose output type differs from their input type. */
+export interface HookOptions<TInput, TOutput> extends DispatchOptions {
+    /**
+     * Builds the next handler's input from the previous handler's output.
+     * Without it the output is passed on as-is, which only works when
+     * TInput and TOutput are the same type.
+     */
+    carry?: (output: TOutput, input: TInput) => TInput;
+}
 
 export class TessellatePluginRegistry {
     private plugins: Map<string, Plugin>;
@@ -52,7 +69,7 @@ export class TessellatePluginRegistry {
         //load plugin api routes
         plugin.get("api").forEach((r) => {
             logger.debug(`Registering Plugin ${name}'s Endpoint: ${r.route}`);
-            this.apiRegistry.register(name, r);
+            this.apiRegistry.register(name, r, plugin.getPermissions());
         });
 
         //create plugin database tables
@@ -74,20 +91,27 @@ export class TessellatePluginRegistry {
     // ── Hook dispatch (waterfall) ──
     // Each handler gets the previous one's output.
     // First ok:false stops the chain and returns to the caller.
+    // With `requires`, plugins lacking that permission are skipped entirely
+    // (used for hooks that carry PII).
 
     public async runHook<TInput, TOutput>(
         def: HookDefinition<TInput, TOutput>,
         input: TInput,
+        options: HookOptions<TInput, TOutput> = {},
     ): Promise<HookResult<TOutput>> {
         let value: unknown = input;
-        for (const plugin of this.plugins.values()) {
+        let output: unknown = input; // the last handler's output
+        for (const plugin of this.pluginsWith(options.requires)) {
             for (const handler of plugin.getHookHandlers(def.name)) {
                 const result = (await handler(value)) as HookResult<unknown>;
                 if (!result.ok) return result;
-                value = result.value;
+                output = result.value;
+                value = options.carry
+                    ? options.carry(result.value as TOutput, value as TInput)
+                    : result.value;
             }
         }
-        return { ok: true, value: value as TOutput };
+        return { ok: true, value: output as TOutput };
     }
 
     // ── Event dispatch (fire and forget) ──
@@ -98,15 +122,37 @@ export class TessellatePluginRegistry {
         def: EventDefinition<THandler>,
         ...args: Parameters<THandler>
     ): void {
-        for (const plugin of this.plugins.values()) {
+        this.emitTo({}, def, ...args);
+    }
+
+    /**
+     * Like emit, but only plugins granted `options.requires` are called.
+     * Used for events that carry PII, such as customer events.
+     */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- any[] needed for Parameters<THandler> to extract arg types
+    public emitTo<THandler extends (...args: any[]) => void>(
+        options: DispatchOptions,
+        def: EventDefinition<THandler>,
+        ...args: Parameters<THandler>
+    ): void {
+        for (const plugin of this.pluginsWith(options.requires)) {
             for (const handler of plugin.getEventListeners(def.name)) {
-                Promise.resolve(handler(...args)).catch((err) =>
-                    logger.error(
-                        `Plugin event "${def.name}" handler error:`,
-                        err,
-                    ),
-                );
+                Promise.resolve()
+                    .then(() => handler(...args))
+                    .catch((err) =>
+                        logger.error(
+                            `Plugin event "${def.name}" handler error:`,
+                            err,
+                        ),
+                    );
             }
         }
+    }
+
+    private pluginsWith(requires?: keyof PluginPermissionProvider): Plugin[] {
+        const all = [...this.plugins.values()];
+        return requires
+            ? all.filter((plugin) => plugin.getPermissions()[requires])
+            : all;
     }
 }

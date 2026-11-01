@@ -2,6 +2,7 @@ import { Logger } from "tslog";
 import { getRedisClient, setItemsByLocationID } from "@/services/redis";
 import { activeProvider } from "@/services/providers";
 import { catalogStore, getCatalogByLocation } from "@/services/db/catalog";
+import { customerStore } from "@/services/db/customers";
 import { locationStore } from "@/services/db/locations";
 import { syncResource } from "@/services/store";
 
@@ -42,6 +43,22 @@ export async function updateCatalogInCache() {
         },
         store: catalogStore,
     });
+
+    // A provider without customer access (e.g. a Square token missing the
+    // customers scope) must not stop the catalog refresh.
+    // Customers are hard deleted. syncResource keeps local records when the
+    // remote returns nothing, so a seller deleting their LAST customer in
+    // Square leaves the local copy until the next non-empty sync or a delete
+    // through our service.
+    try {
+        await syncResource({
+            name: "customers",
+            fetchRemote: () => activeProvider.fetchCustomers(),
+            store: customerStore,
+        });
+    } catch (err) {
+        logger.error("Customer sync failed:", err);
+    }
 
     const catalog = await getCatalogByLocation();
     await setItemsByLocationID(catalog.items);

@@ -1,4 +1,4 @@
-import { Currency, OrderLineItem, SquareClient } from "square";
+import { Currency, OrderLineItem, SquareClient, SquareError } from "square";
 import type { DayOfWeek, Location as SquareLocation } from "square";
 import type {
     CountryCode,
@@ -10,27 +10,42 @@ import type {
     Order,
     Money,
     CartItem as CartItemType,
+    Customer,
+    CustomerInput,
+    CustomerPage,
+    CustomerQuery,
     Location,
     LocationHours,
 } from "@tessellatepos/sdk";
 import { COUNTRIES, toBigIntAmount } from "@tessellatepos/sdk";
 import { configDotenv } from "dotenv";
+import { Logger } from "tslog";
 import type {
     squareHelperCategory,
     squareHelperItemVariation,
 } from "./helpers";
 import type {
     CatalogProvider,
+    CustomerProvider,
     PaymentProvider,
     DevicePairingProvider,
     DeviceCodePairing,
 } from "../types";
+import {
+    canWriteTags,
+    mapSquareCustomer,
+    pageCustomers,
+    toSquareCreateBody,
+    toSquareUpdateBody,
+} from "./customers";
 import {
     getDecryptedAccessToken,
     getSquareEnvironment,
 } from "@/services/squareOauth";
 
 configDotenv();
+
+const logger = new Logger();
 
 /**
  * Resolves the token each request goes out with: the seller's stored OAuth
@@ -357,6 +372,7 @@ async function createOrder(order: Order): Promise<Order | undefined | null> {
             }),
             referenceId: order.referenceId,
             source: order.source,
+            customerId: order.customerId ?? undefined,
         },
     });
 
@@ -587,9 +603,128 @@ async function payCash(
     return response.payment?.cashDetails?.changeBackMoney as Money;
 }
 
+/**
+ * Whether an error is Square saying the record does not exist.
+ * @param error the thrown error
+ * @returns true for a 404
+ */
+function isNotFound(error: unknown): boolean {
+    return error instanceof SquareError && error.statusCode === 404;
+}
+
+/**
+ * Fetches every customer from Square.
+ * @returns all customers
+ */
+async function fetchCustomers(): Promise<Customer[]> {
+    const customers: Customer[] = [];
+    for await (const customer of await client.customers.list()) {
+        if (customer.id) {
+            customers.push(
+                mapSquareCustomer(customer as typeof customer & { id: string }),
+            );
+        }
+    }
+    return customers;
+}
+
+/**
+ * Lists customers matching a query. Answered from the full Square list,
+ * since Square's search cannot match text across names, email and phone.
+ * Reads normally go through the Postgres mirror instead.
+ * @param query text search, filters and paging
+ * @returns a page of customers
+ */
+async function listCustomers(query: CustomerQuery): Promise<CustomerPage> {
+    return pageCustomers(await fetchCustomers(), query);
+}
+
+/**
+ * Fetches one customer from Square.
+ * @param id the customer id
+ * @returns the customer, or null if it doesn't exist
+ */
+async function getCustomer(id: string): Promise<Customer | null> {
+    try {
+        const { customer } = await client.customers.get({ customerId: id });
+        return customer?.id
+            ? mapSquareCustomer(customer as typeof customer & { id: string })
+            : null;
+    } catch (error) {
+        if (isNotFound(error)) return null;
+        throw error;
+    }
+}
+
+/**
+ * Creates a customer in Square.
+ * @param input the customer's details
+ * @returns the created customer
+ */
+async function createCustomer(input: CustomerInput): Promise<Customer> {
+    const { customer } = await client.customers.create(
+        toSquareCreateBody(input, crypto.randomUUID()),
+    );
+    if (!customer?.id) throw new Error("Square did not return a customer");
+    return mapSquareCustomer(customer as typeof customer & { id: string });
+}
+
+/**
+ * Updates a customer in Square.
+ * @param id the customer id
+ * @param input the customer's new details
+ * @returns the updated customer, or null if it doesn't exist
+ */
+async function updateCustomer(
+    id: string,
+    input: CustomerInput,
+): Promise<Customer | null> {
+    try {
+        const { customer: current } = await client.customers.get({
+            customerId: id,
+        });
+        if (!canWriteTags(current?.referenceId) && input.tags.length > 0) {
+            logger.debug(
+                `customer ${id}: foreign referenceId, tags stay local`,
+            );
+        }
+        const { customer } = await client.customers.update(
+            toSquareUpdateBody(id, input, current?.referenceId),
+        );
+        return customer?.id
+            ? mapSquareCustomer(customer as typeof customer & { id: string })
+            : null;
+    } catch (error) {
+        if (isNotFound(error)) return null;
+        throw error;
+    }
+}
+
+/**
+ * Deletes a customer in Square.
+ * @param id the customer id
+ * @returns true if a customer was deleted, false if it didn't exist
+ */
+async function deleteCustomer(id: string): Promise<boolean> {
+    try {
+        await client.customers.delete({ customerId: id });
+        return true;
+    } catch (error) {
+        if (isNotFound(error)) return false;
+        throw error;
+    }
+}
+
 export const squareProvider: CatalogProvider &
     PaymentProvider &
-    DevicePairingProvider = {
+    DevicePairingProvider &
+    CustomerProvider = {
+    listCustomers,
+    getCustomer,
+    createCustomer,
+    updateCustomer,
+    deleteCustomer,
+    fetchCustomers,
     fetchCatalog,
     fetchLocations,
     createOrder,

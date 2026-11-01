@@ -19,7 +19,7 @@ import {
 import {
     EMPTY_HOURS,
     getLocationById,
-    importLocationsFromProvider,
+    locationStore,
 } from "@/services/db/locations";
 import { isAuthorized } from "@/services/squareOauth";
 import { activeProviderName } from "@/services/providers";
@@ -334,19 +334,17 @@ async function insertLocation(
     address: Address,
     currency: CurrencyCode,
 ): Promise<void> {
-    await importLocationsFromProvider([
-        {
-            id,
-            name,
-            address,
-            currency,
-            phone_number: "",
-            website_url: "",
-            email: "",
-            hours: EMPTY_HOURS,
-            logo_url: "",
-        },
-    ]);
+    await locationStore.upsert({
+        id,
+        name,
+        address,
+        currency,
+        phone_number: "",
+        website_url: "",
+        email: "",
+        hours: EMPTY_HOURS,
+        logo_url: "",
+    });
 }
 
 /**

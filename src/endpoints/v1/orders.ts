@@ -2,6 +2,7 @@ import express, { Router } from "express";
 import { Logger } from "tslog";
 import { activeProvider } from "@/services/providers";
 import { getPairedDeviceByType } from "@/services/db/configDevice";
+import { getCustomer } from "@/services/customers";
 import { insertOrder, syncOrderFromSquare } from "@/services/db/orders";
 import { bigintReplacer } from "@tessellatepos/sdk";
 import type { Money, Order, TenderType } from "@tessellatepos/sdk";
@@ -58,6 +59,19 @@ orderRouter.post("/create", async (req, res) => {
             return;
         }
         const modifiedOrderDetails = hookResult.value;
+
+        // An attached customer must exist (checked after the hook, which may
+        // have set or changed it).
+        const customerId = modifiedOrderDetails.customerId;
+        if (customerId !== undefined && customerId !== null) {
+            if (
+                typeof customerId !== "string" ||
+                !(await getCustomer(customerId))
+            ) {
+                res.status(400).json({ message: "Unknown customer" });
+                return;
+            }
+        }
 
         modifiedOrderDetails.referenceId = crypto.randomUUID();
 

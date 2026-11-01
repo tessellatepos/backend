@@ -5,11 +5,13 @@ import type {
     PluginApiMountDefinition,
     PluginApiMethod,
     PluginApiRequest,
+    PluginPermissionProvider,
 } from "@tessellatepos/plugin-sdk";
 import type { Principal } from "@tessellatepos/sdk";
 import type { PluginServerContext } from "@tessellatepos/plugin-sdk/server";
 import { activeProvider } from "@/services/providers";
 import { getItemById } from "@/services/redis";
+import { findCustomers, getCustomer } from "@/services/customers";
 import { TessellatePluginDatabaseRegistry } from "@/utils/registry/database/pluginDatabaseRegistry";
 
 const logger = new Logger();
@@ -19,17 +21,29 @@ interface RegisteredRoute {
     method: PluginApiMethod;
     matcher: MatchFunction<Record<string, string>>;
     handler: PluginApiMountDefinition["handler"];
+    permissions: PluginPermissionProvider;
 }
 
 // Builds the PluginServerContext passed to plugin API mount handlers.
 // Provider/cache failures are normalized to the null the SDK promises,
 // rather than throwing through into plugin code that never asked for
 // host-provider error handling.
-function buildPluginServerContext(
+export function buildPluginServerContext(
     pluginName: string,
     databaseRegistry: TessellatePluginDatabaseRegistry,
     principal: Principal | null,
+    permissions: PluginPermissionProvider,
 ): PluginServerContext {
+    // Customer data is PII: a plugin without the CUSTOMER permission gets a
+    // rejected promise, never an empty result it might mistake for "none".
+    const requireCustomer = () => {
+        if (!permissions.customer) {
+            throw new Error(
+                `Plugin "${pluginName}" lacks the CUSTOMER permission`,
+            );
+        }
+    };
+
     return {
         db: databaseRegistry.getRepository(pluginName),
         session: {
@@ -60,6 +74,14 @@ function buildPluginServerContext(
                 return null;
             }
         },
+        getCustomer: async (customerId: string) => {
+            requireCustomer();
+            return getCustomer(customerId);
+        },
+        findCustomers: async (query) => {
+            requireCustomer();
+            return findCustomers(query);
+        },
     };
 }
 
@@ -71,12 +93,17 @@ export class TessellatePluginApiRegistry {
         this.databaseRegistry = databaseRegistry;
     }
 
-    public register(pluginName: string, mount: PluginApiMountDefinition) {
+    public register(
+        pluginName: string,
+        mount: PluginApiMountDefinition,
+        permissions: PluginPermissionProvider,
+    ) {
         this.routes.push({
             pluginName,
             method: mount.method,
             matcher: match(mount.route),
             handler: mount.handler,
+            permissions,
         });
     }
 
@@ -105,6 +132,7 @@ export class TessellatePluginApiRegistry {
                 route.pluginName,
                 this.databaseRegistry,
                 req.principal ?? null,
+                route.permissions,
             );
 
             try {

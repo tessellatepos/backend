@@ -1,4 +1,9 @@
-import type { Item, Location } from "@tessellatepos/sdk";
+import type {
+    Customer,
+    CustomerInput,
+    Item,
+    Location,
+} from "@tessellatepos/sdk";
 
 /**
  * Builds a location with every optional field unset.
@@ -72,5 +77,49 @@ export function makeItem(
             },
         ],
         locationIds,
+    };
+}
+
+/**
+ * Builds customer input with the optional fields unset.
+ * @param given the given name
+ * @param family the family name
+ * @param overrides any fields to set
+ * @returns the input
+ */
+export function makeCustomerInput(
+    given: string,
+    family = "Tester",
+    overrides: Partial<CustomerInput> = {},
+): CustomerInput {
+    return {
+        given_name: given,
+        family_name: family,
+        company_name: "",
+        email: "",
+        phone_number: "",
+        note: "",
+        tags: [],
+        ...overrides,
+    };
+}
+
+/**
+ * Builds a customer with a fixed id and timestamps.
+ * @param id the customer id
+ * @param given the given name
+ * @param overrides any fields to set
+ * @returns the customer
+ */
+export function makeCustomer(
+    id: string,
+    given: string,
+    overrides: Partial<CustomerInput> = {},
+): Customer {
+    return {
+        ...makeCustomerInput(given, "Tester", overrides),
+        id,
+        created_at: "2026-01-01T00:00:00.000Z",
+        updated_at: "2026-01-01T00:00:00.000Z",
     };
 }
