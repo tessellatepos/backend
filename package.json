@@ -1,12 +1,12 @@
 {
     "name": "@tessellatepos/backend",
-    "version": "0.1.0-dev",
+    "version": "0.0.2-alpha",
     "author": "Tessellate POS <tessellate@travisfriesen.ca>",
     "license": "AGPL-3.0-only",
     "main": "src/server.ts",
     "scripts": {
         "dev": "tsx src/server.ts --watch",
-        "build": "tsc && tsc-alias",
+        "build": "tsc && tsc-alias && mkdir -p dist/seed && cp src/seed/demo-catalog.csv dist/seed/",
         "start": "node dist/server.js",
         "test": "node --import tsx --import ./test/helpers/env.ts --test --test-concurrency=1 \"test/*.test.ts\" \"src/**/*.test.ts\"",
         "lint": "prettier . && eslint .",
@@ -36,7 +36,8 @@
         "square": "^44.0.0",
         "ts-node": "^10.9.2",
         "tslog": "^4.10.2",
-        "ws": "^8.19.0"
+        "ws": "^8.19.0",
+        "zod": "4.6.7"
     },
     "devDependencies": {
         "@tsconfig/node-ts": "^23.6.2",

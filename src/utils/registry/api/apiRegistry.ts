@@ -4,6 +4,7 @@ import type { Express, RequestHandler } from "express";
 import { Logger } from "tslog";
 import { requireAuthenticated } from "@/middleware/authenticate";
 import { TessellatePluginApiRegistry } from "@/utils/registry/api/pluginApiRegistry";
+import type { CoreGatewayOperation } from "@/gateway/registry";
 
 const logger = new Logger();
 
@@ -12,6 +13,11 @@ export interface ITessellateApiRouter<R = RequestHandler> {
     override_default?: boolean;
     version: string;
     router: R;
+    /**
+     * Operations the API gateway may expose. Omit it and the router is
+     * internal only (deny by default).
+     */
+    gateway?: CoreGatewayOperation[];
 }
 
 export class TessellateApiRegistry {

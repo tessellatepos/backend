@@ -8,7 +8,9 @@ import {
     varchar,
     jsonb,
     primaryKey,
+    uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // LOCAL is a till that runs in a staff browser: no pairing code, no hardware.
 export const deviceTypeEnum = pgEnum("device_type", [
@@ -19,26 +21,35 @@ export const deviceTypeEnum = pgEnum("device_type", [
 
 export const pricingTypeEnum = pgEnum("pricing_type", ["FIXED", "VARIABLE"]);
 
-export const configDevicesTable = pgTable("tessellate-devices-config", {
-    id: varchar("id", { length: 12 }).primaryKey(),
-    created_at: timestamp("entry_created_at", {
-        withTimezone: true,
-    }).defaultNow(),
-    pairing_code: varchar("paring_code", { length: 8 }),
-    code_created_at: timestamp("code_created_at", {
-        withTimezone: true,
-    }).defaultNow(),
-    paired_at: timestamp("paired_at", { withTimezone: true }),
-    square_location: varchar("square_location", { length: 255 }),
-    customer_facing: boolean(),
-    device_hardware_id: text("device_hardware_id"),
-    device_type: deviceTypeEnum("device_type"),
-    square_device_id: text("square_device_id"),
-    square_device_code_id: text("square_device_code_id"),
-    square_pair_by: timestamp("square_pair_by", { withTimezone: true }),
-    // sha-256 (hex) of the device's API token; the token itself is never stored.
-    device_token_hash: text("device_token_hash").unique(),
-});
+export const configDevicesTable = pgTable(
+    "tessellate-devices-config",
+    {
+        id: varchar("id", { length: 12 }).primaryKey(),
+        created_at: timestamp("entry_created_at", {
+            withTimezone: true,
+        }).defaultNow(),
+        pairing_code: varchar("paring_code", { length: 8 }),
+        code_created_at: timestamp("code_created_at", {
+            withTimezone: true,
+        }).defaultNow(),
+        paired_at: timestamp("paired_at", { withTimezone: true }),
+        square_location: varchar("square_location", { length: 255 }),
+        customer_facing: boolean(),
+        device_hardware_id: text("device_hardware_id"),
+        device_type: deviceTypeEnum("device_type"),
+        square_device_id: text("square_device_id"),
+        square_device_code_id: text("square_device_code_id"),
+        square_pair_by: timestamp("square_pair_by", { withTimezone: true }),
+        // sha-256 (hex) of the device's API token; the token itself is never stored.
+        device_token_hash: text("device_token_hash").unique(),
+    },
+    (table) => [
+        // At most one LOCAL till per location, so concurrent creates cannot race.
+        uniqueIndex("tessellate_devices_one_local_per_location")
+            .on(table.square_location)
+            .where(sql`tessellate_is_local_till(${table.device_type})`),
+    ],
+);
 
 export const configSystemTable = pgTable("tessellate-system-config", {
     id: integer("id").primaryKey(),
@@ -227,6 +238,37 @@ export const pluginRegistryTable = pgTable("tessellate-plugin-registry", {
     sha256: varchar("sha256", { length: 255 }),
     tables: jsonb("tables"),
     installedAt: timestamp("installed_at"),
+});
+
+// Gateway API credentials: a client id (the primary key) and a hashed client
+// secret. The secret itself is never stored; rotation keeps the previous hash
+// until its overlap ends. The webhook secret is encrypted (it must be read to
+// sign deliveries).
+export const apiCredentialsTable = pgTable("tessellate-api-credentials", {
+    id: varchar("id", { length: 64 }).primaryKey().notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    scopes: jsonb("scopes").$type<string[]>().notNull(),
+    location_ids: jsonb("location_ids").$type<string[]>().notNull(),
+    origins: jsonb("origins").$type<string[]>().notNull(),
+    rate_limit_per_minute: integer("rate_limit_per_minute").notNull(),
+    expires_at: timestamp("expires_at", { withTimezone: true }),
+    webhook_url: text("webhook_url"),
+    webhook_secret_encrypted: text("webhook_secret_encrypted"),
+    // sha-256 (hex) of the client secret.
+    secret_hash: text("secret_hash").notNull(),
+    previous_secret_hash: text("previous_secret_hash"),
+    previous_secret_expires_at: timestamp("previous_secret_expires_at", {
+        withTimezone: true,
+    }),
+    created_by: text("created_by").notNull(),
+    created_at: timestamp("created_at", { withTimezone: true })
+        .defaultNow()
+        .notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true })
+        .defaultNow()
+        .notNull(),
+    last_used_at: timestamp("last_used_at", { withTimezone: true }),
+    revoked_at: timestamp("revoked_at", { withTimezone: true }),
 });
 
 // ---------------------------------------------------------------------------

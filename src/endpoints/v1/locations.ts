@@ -3,6 +3,10 @@ import { Logger } from "tslog";
 import { getLocationById, getLocations } from "@/services/db/locations";
 import { requireLocation, requireScope } from "@/middleware/authenticate";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
+import {
+    locationListSchema,
+    locationSchema,
+} from "@/gateway/schemas/locations";
 
 const locationRouter: Router = express.Router();
 
@@ -12,6 +16,26 @@ export const locationsv1Endpoint: ITessellateApiRouter = {
     route_path: "/locations",
     version: "v1",
     router: locationRouter,
+    gateway: [
+        {
+            method: "GET",
+            path: "/",
+            operationId: "locations.list",
+            scope: "locations:read",
+            summary: "List the locations the credential may act on",
+            location: "none",
+            response: locationListSchema,
+        },
+        {
+            method: "GET",
+            path: "/:locationId",
+            operationId: "locations.get",
+            scope: "locations:read",
+            summary: "Get one location, including its opening hours",
+            location: "path",
+            response: locationSchema,
+        },
+    ],
 };
 
 // Reads the persisted locations, so it works for any provider, unlike

@@ -13,6 +13,7 @@ import { getActiveProvider } from "@/services/providers";
 import { getItemById } from "@/services/redis";
 import { findCustomers, getCustomer } from "@/services/customers";
 import { TessellatePluginDatabaseRegistry } from "@/utils/registry/database/pluginDatabaseRegistry";
+import { pluginEntry, type GatewayEntry } from "@/gateway/registry";
 
 const logger = new Logger();
 
@@ -22,6 +23,7 @@ interface RegisteredRoute {
     matcher: MatchFunction<Record<string, string>>;
     handler: PluginApiMountDefinition["handler"];
     permissions: PluginPermissionProvider;
+    gateway?: GatewayEntry;
 }
 
 // Builds the PluginServerContext passed to plugin API mount handlers.
@@ -104,11 +106,30 @@ export class TessellatePluginApiRegistry {
             matcher: match(mount.route),
             handler: mount.handler,
             permissions,
+            gateway: mount.gateway
+                ? pluginEntry(
+                      pluginName,
+                      {
+                          route: mount.route,
+                          method: mount.method,
+                          gateway: mount.gateway,
+                      },
+                      this.dispatch,
+                  )
+                : undefined,
         });
     }
 
     public unregister(pluginName: string) {
         this.routes = this.routes.filter((r) => r.pluginName !== pluginName);
+    }
+
+    /**
+     * Gateway entries of every loaded plugin mount that opted in.
+     * @returns the entries, in registration order
+     */
+    public gatewayEntries(): GatewayEntry[] {
+        return this.routes.flatMap((r) => (r.gateway ? [r.gateway] : []));
     }
 
     public dispatch: RequestHandler = async (req, res, next) => {

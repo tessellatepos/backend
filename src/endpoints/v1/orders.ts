@@ -5,6 +5,7 @@ import {
     getActiveProviderId,
     providerInfo,
 } from "@/services/providers";
+import { OrderConflictError } from "@/services/providers/types";
 import {
     getConfigDeviceByID,
     getPairedDeviceByType,
@@ -17,6 +18,11 @@ import { hooks, events } from "@tessellatepos/plugin-sdk/server";
 import { emitPaymentStatusEvent } from "@/services/websocket/events";
 import { requireLocation, requireScope } from "@/middleware/authenticate";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
+import {
+    orderCreateSchema,
+    orderSchema,
+    toInternalOrder,
+} from "@/gateway/schemas/orders";
 import type { TessellatePluginRegistry } from "@/utils/registry/plugin/pluginRegistry";
 
 const orderRouter: Router = express.Router();
@@ -36,10 +42,71 @@ async function isLocalTill(deviceId: unknown): Promise<boolean> {
     return device?.device_type === "LOCAL";
 }
 
+/**
+ * Whether the request's principal may act on an order. A principal pinned to
+ * locations can only reach orders at those locations. An unknown order and an
+ * order at another location answer differently (404 vs 403), as the brief asks.
+ * @param req the request, carrying the principal
+ * @param orderId the order the route targets
+ * @returns "ok", "not-found", or "forbidden"
+ */
+async function checkOrderLocation(
+    req: express.Request,
+    orderId: string,
+): Promise<"ok" | "not-found" | "forbidden"> {
+    const principal = req.principal;
+    if (principal?.location_ids === "all") return "ok";
+    const order = await getActiveProvider().fetchOrder(orderId);
+    if (!order) return "not-found";
+    if (!principal || !order.locationId) return "forbidden";
+    return principal.location_ids.includes(order.locationId)
+        ? "ok"
+        : "forbidden";
+}
+
+/**
+ * Sends the refusal for {@link checkOrderLocation} when it is not "ok".
+ * @returns true when a response was sent and the handler must stop
+ */
+function refuseOrderAccess(
+    res: Response,
+    access: "ok" | "not-found" | "forbidden",
+): boolean {
+    if (access === "ok") return false;
+    // Same answer for both, so a principal cannot tell an order elsewhere from
+    // one that does not exist.
+    res.status(404).json({ message: "Order not found" });
+    return true;
+}
+
 export const ordersv1Endpoint: ITessellateApiRouter = {
     route_path: "/orders",
     version: "v1",
     router: orderRouter,
+    gateway: [
+        {
+            method: "POST",
+            path: "/",
+            internalPath: "/create",
+            operationId: "orders.create",
+            scope: "orders:write",
+            summary: "Create an order from variation ids and quantities",
+            location: "body",
+            request: orderCreateSchema,
+            response: orderSchema,
+            toInternal: (input) =>
+                toInternalOrder(input as Parameters<typeof toInternalOrder>[0]),
+        },
+        {
+            method: "GET",
+            path: "/:orderId",
+            operationId: "orders.get",
+            scope: "orders:read",
+            summary: "Get one order",
+            location: "none",
+            response: orderSchema,
+        },
+    ],
 };
 
 // The plugin registry is attached to app.locals in server.ts after plugins
@@ -49,6 +116,30 @@ function getPluginRegistry(req: express.Request): TessellatePluginRegistry {
     return (req.app.locals as { pluginRegistry: TessellatePluginRegistry })
         .pluginRegistry;
 }
+
+// Reads one order. The order's own location is checked, as for payments.
+orderRouter.get(
+    "/:orderId",
+    requireScope("orders:read"),
+    async (req: Request<{ orderId: string }>, res: Response) => {
+        try {
+            const orderId = req.params.orderId;
+            if (refuseOrderAccess(res, await checkOrderLocation(req, orderId)))
+                return;
+            const order = await getActiveProvider().fetchOrder(orderId);
+            if (!order) {
+                res.status(404).json({ message: "Order not found" });
+                return;
+            }
+            res.status(200)
+                .header("Content-Type", "application/json")
+                .send(JSON.stringify(order, bigintReplacer));
+        } catch (error) {
+            logger.error("Failed to fetch order", error);
+            res.status(500).json({ message: "Failed to fetch order" });
+        }
+    },
+);
 
 orderRouter.post(
     "/create",
@@ -137,6 +228,9 @@ orderRouter.post(
         const provider = getActiveProvider();
         try {
             const orderId = req.params.orderId;
+
+            if (refuseOrderAccess(res, await checkOrderLocation(req, orderId)))
+                return;
 
             if (await isLocalTill(req.body?.deviceId)) {
                 res.status(400).json({
@@ -259,6 +353,14 @@ orderRouter.get(
         try {
             const { checkoutId } = req.params;
 
+            if (
+                refuseOrderAccess(
+                    res,
+                    await checkOrderLocation(req, req.params.orderId),
+                )
+            )
+                return;
+
             const status =
                 await provider.getTerminalCheckoutStatus?.(checkoutId);
             if (!status) {
@@ -322,6 +424,9 @@ orderRouter.post(
         try {
             const orderId = req.params.orderId;
             const amountTendered = req.body?.amountTendered;
+
+            if (refuseOrderAccess(res, await checkOrderLocation(req, orderId)))
+                return;
 
             if (amountTendered === undefined || amountTendered === null) {
                 res.status(400).json({ message: "Missing amountTendered" });
@@ -390,6 +495,10 @@ orderRouter.post(
                     ),
                 );
         } catch (error) {
+            if (error instanceof OrderConflictError) {
+                res.status(409).json({ message: error.message });
+                return;
+            }
             logger.error("Failed to pay with cash", error);
             res.status(500).json({ message: "Failed to pay with cash" });
         }
@@ -407,6 +516,9 @@ orderRouter.post(
         try {
             const orderId = req.params.orderId;
             const paymentId = req.body?.paymentId;
+
+            if (refuseOrderAccess(res, await checkOrderLocation(req, orderId)))
+                return;
 
             if (!paymentId) {
                 res.status(400).json({ message: "Missing paymentId" });

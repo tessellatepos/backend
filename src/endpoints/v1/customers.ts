@@ -9,6 +9,13 @@ import type {
 } from "@tessellatepos/sdk";
 import { hooks, events } from "@tessellatepos/plugin-sdk/server";
 import {
+    customerInputSchema,
+    customerListQuerySchema,
+    customerPageSchema,
+    customerPatchSchema,
+    customerSchema,
+} from "@/gateway/schemas/customers";
+import {
     CustomerValidationError,
     createCustomer,
     deleteCustomer,
@@ -34,6 +41,47 @@ export const customersv1Endpoint: ITessellateApiRouter = {
     route_path: "/customers",
     version: "v1",
     router: customerRouter,
+    gateway: [
+        {
+            method: "GET",
+            path: "/",
+            operationId: "customers.list",
+            scope: "customers:read",
+            summary: "Search customers",
+            location: "none",
+            request: customerListQuerySchema,
+            response: customerPageSchema,
+        },
+        {
+            method: "GET",
+            path: "/:id",
+            operationId: "customers.get",
+            scope: "customers:read",
+            summary: "Get one customer",
+            location: "none",
+            response: customerSchema,
+        },
+        {
+            method: "POST",
+            path: "/",
+            operationId: "customers.create",
+            scope: "customers:write",
+            summary: "Create a customer",
+            location: "none",
+            request: customerInputSchema,
+            response: customerSchema,
+        },
+        {
+            method: "PATCH",
+            path: "/:id",
+            operationId: "customers.update",
+            scope: "customers:write",
+            summary: "Update a customer's fields",
+            location: "none",
+            request: customerPatchSchema,
+            response: customerSchema,
+        },
+    ],
 };
 
 // Customers are PII: only plugins holding the CUSTOMER permission may see
