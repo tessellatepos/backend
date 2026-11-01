@@ -1,5 +1,4 @@
 import express, { Router } from "express";
-import { SquareClient } from "square";
 import { Logger } from "tslog";
 import {
     createAuthorizationState,
@@ -7,12 +6,12 @@ import {
     getAuthorizationUrl,
     getDecryptedAccessToken,
     getShortLivedAccessToken,
-    getSquareEnvironment,
     handleCallback,
     revokeTokens,
 } from "@/services/squareOauth";
 import { getConfigDeviceByID } from "@/services/db/configDevice";
 import { updateCatalogInCache } from "@/services/catalogSync";
+import { squareProvider } from "@/services/providers/square";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 
 const squareRouter: Router = express.Router();
@@ -34,19 +33,7 @@ squareRouter.get("/locations", async (req, res) => {
             return;
         }
 
-        const client = new SquareClient({
-            token,
-            environment: getSquareEnvironment(),
-        });
-        const response = await client.locations.list();
-
-        res.status(200).json(
-            (response.locations ?? []).map((location) => ({
-                id: location.id,
-                name: location.name ?? location.id,
-                status: location.status ?? null,
-            })),
-        );
+        res.status(200).json(await squareProvider.fetchLocations());
     } catch (error) {
         logger.error(error);
         res.status(500).json({ message: "Failed to fetch Square locations" });

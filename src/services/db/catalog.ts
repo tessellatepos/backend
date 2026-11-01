@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { and, eq, inArray, notInArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
     catalogItemsTable,
     catalogItemVariationsTable,
@@ -8,6 +8,7 @@ import {
     catalogItemLocationsTable,
 } from "./schema";
 import { drizzleDB } from "@/services/db/postgres";
+import type { LocalStore, ListOptions, Page } from "@/services/store";
 import { parseMoney, stripBigints } from "@tessellatepos/sdk";
 import type {
     Item,
@@ -38,11 +39,6 @@ function parseLocationOverrides(
               }
             : undefined,
     }));
-}
-
-export interface ProviderCatalogResult {
-    items: Item[];
-    itemLocationIds: Map<string, string[]>;
 }
 
 /**
@@ -113,18 +109,12 @@ async function upsertVariation(
 }
 
 /**
- * Persists a freshly-fetched provider catalog into Postgres. Items that
- * existed before this import but weren't in it get archived, not deleted,
- * so historical orders referencing them still resolve.
- * @param result the items and their per-item location ids fetched from a provider
- * @param db the drizzle instance to run the import against
+ * Upserts items with their categories, variations and location links. Never
+ * archives anything; items missing from `items` are left as they are.
+ * @param items the items to persist; Item.locationIds becomes their location links
+ * @param db the drizzle instance to run the upserts against
  */
-export async function importCatalogFromProvider(
-    result: ProviderCatalogResult,
-    db: TDrizzleDB = drizzleDB,
-) {
-    const { items, itemLocationIds } = result;
-
+async function upsertCatalogItems(items: Item[], db: TDrizzleDB) {
     for (const item of items) {
         const values = {
             name: item.name ?? null,
@@ -157,20 +147,12 @@ export async function importCatalogFromProvider(
             await upsertVariation(item.id, variation, db);
         }
 
-        for (const locationId of itemLocationIds.get(item.id) ?? []) {
+        for (const locationId of item.locationIds ?? []) {
             await db
                 .insert(catalogItemLocationsTable)
                 .values({ itemId: item.id, locationId })
                 .onConflictDoNothing();
         }
-    }
-
-    const importedIds = items.map((item) => item.id);
-    if (importedIds.length > 0) {
-        await db
-            .update(catalogItemsTable)
-            .set({ isArchived: true, updatedAt: new Date() })
-            .where(notInArray(catalogItemsTable.id, importedIds));
     }
 }
 
@@ -315,3 +297,72 @@ export async function getCatalogByLocation(
 
     return { items };
 }
+
+/**
+ * Whether an item matches a search string, by name, display name or variation
+ * name/SKU.
+ * @param item the item
+ * @param text the lower-cased search text
+ * @returns true if it matches
+ */
+function itemMatches(item: Item, text: string): boolean {
+    return [
+        item.name,
+        item.displayName,
+        ...(item.variations ?? []).flatMap((v) => [v.name, v.sku]),
+    ].some((field) => field?.toLowerCase().includes(text));
+}
+
+/**
+ * The persisted catalog as a LocalStore, wrapping the item/category/variation
+ * tables above rather than a single table. "Removing" an item archives it, so
+ * historical orders still resolve. Listing reads the whole catalog (as the
+ * Redis refresh does) and pages in memory, ordered by id.
+ */
+export const catalogStore: LocalStore<Item> = {
+    idOf: (item) => item.id,
+
+    async list(options: ListOptions = {}): Promise<Page<Item>> {
+        const { text, limit, cursor, where } = options;
+        if (where) throw new Error("catalogStore.list does not support where");
+        const needle = text?.toLowerCase();
+        const items = (await getCatalogByLocation()).items
+            .filter((item) => !needle || itemMatches(item, needle))
+            .filter((item) => !cursor || item.id > cursor)
+            .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+        if (limit === undefined || items.length <= limit) {
+            return { items, nextCursor: null };
+        }
+        const page = items.slice(0, limit);
+        return { items: page, nextCursor: page[page.length - 1].id };
+    },
+
+    async get(id) {
+        const [item] = (await getCatalogByLocation()).items.filter(
+            (candidate) => candidate.id === id,
+        );
+        return item ?? null;
+    },
+
+    async upsertMany(items) {
+        await upsertCatalogItems(items, drizzleDB);
+    },
+
+    async upsert(item) {
+        await upsertCatalogItems([item], drizzleDB);
+    },
+
+    async remove(id) {
+        const archived = await drizzleDB
+            .update(catalogItemsTable)
+            .set({ isArchived: true, updatedAt: new Date() })
+            .where(
+                and(
+                    eq(catalogItemsTable.id, id),
+                    eq(catalogItemsTable.isArchived, false),
+                ),
+            )
+            .returning({ id: catalogItemsTable.id });
+        return archived.length > 0;
+    },
+};

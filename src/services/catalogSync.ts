@@ -1,17 +1,16 @@
 import { Logger } from "tslog";
 import { getRedisClient, setItemsByLocationID } from "@/services/redis";
 import { activeProvider } from "@/services/providers";
-import {
-    getCatalogByLocation,
-    importCatalogFromProvider,
-} from "@/services/db/catalog";
+import { catalogStore, getCatalogByLocation } from "@/services/db/catalog";
+import { locationStore } from "@/services/db/locations";
+import { syncResource } from "@/services/store";
 
 const logger = new Logger();
 
 const CATALOG_SYNC_INTERVAL_MS = 60 * 60 * 1000;
 
 /**
- * Imports the catalog from the active provider into Postgres, then
+ * Imports the locations and catalog from the active provider into Postgres, then
  * refreshes the Redis cache from Postgres.
  */
 export async function updateCatalogInCache() {
@@ -23,8 +22,26 @@ export async function updateCatalogInCache() {
 
     logger.debug("updateCatalogInCache");
 
-    const providerCatalog = await activeProvider.fetchCatalog();
-    await importCatalogFromProvider(providerCatalog);
+    await syncResource({
+        name: "locations",
+        fetchRemote: () => activeProvider.fetchLocations(),
+        store: locationStore,
+        // orders and devices keep referencing a location a provider drops
+        removeMissing: false,
+    });
+
+    await syncResource({
+        name: "catalog",
+        fetchRemote: async () => {
+            const { items, itemLocationIds } =
+                await activeProvider.fetchCatalog();
+            return items.map((item) => ({
+                ...item,
+                locationIds: itemLocationIds.get(item.id) ?? [],
+            }));
+        },
+        store: catalogStore,
+    });
 
     const catalog = await getCatalogByLocation();
     await setItemsByLocationID(catalog.items);

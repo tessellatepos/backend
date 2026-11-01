@@ -145,6 +145,21 @@ export const catalogItemLocationsTable = pgTable(
     (table) => [primaryKey({ columns: [table.itemId, table.locationId] })],
 );
 
+export const locationsTable = pgTable("tessellate-locations", {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    name: text("name").notNull(),
+    address: jsonb("address").notNull(),
+    currency: varchar("currency", { length: 3 }).notNull(),
+    phoneNumber: text("phone_number"),
+    websiteUrl: text("website_url"),
+    email: text("email"),
+    hours: jsonb("hours"),
+    logoUrl: text("logo_url"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
+
 export const pluginRegistryTable = pgTable("tessellate-plugin-registry", {
     id: varchar("id", { length: 255 }).primaryKey().notNull(),
     version: varchar("version", { length: 255 }),

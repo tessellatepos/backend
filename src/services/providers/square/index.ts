@@ -1,5 +1,8 @@
 import { Currency, OrderLineItem, SquareClient } from "square";
+import type { DayOfWeek, Location as SquareLocation } from "square";
 import type {
+    CountryCode,
+    CurrencyCode,
     Item,
     ItemVariation,
     ItemCategory,
@@ -7,8 +10,10 @@ import type {
     Order,
     Money,
     CartItem as CartItemType,
+    Location,
+    LocationHours,
 } from "@tessellatepos/sdk";
-import { toBigIntAmount } from "@tessellatepos/sdk";
+import { COUNTRIES, toBigIntAmount } from "@tessellatepos/sdk";
 import { configDotenv } from "dotenv";
 import type {
     squareHelperCategory,
@@ -222,6 +227,106 @@ async function fetchSquareCategory(id: string): Promise<ItemCategory> {
     return {};
 }
 
+const SQUARE_DAYS: Record<DayOfWeek, keyof LocationHours> = {
+    SUN: "sunday",
+    MON: "monday",
+    TUE: "tuesday",
+    WED: "wednesday",
+    THU: "thursday",
+    FRI: "friday",
+    SAT: "saturday",
+};
+
+/**
+ * Maps Square's flat list of business-hours periods into per-day periods.
+ * Square reports local times, so each is tagged with the location's timezone.
+ * @param location the Square location
+ * @returns the location's hours, with an empty list for closed days
+ */
+function mapSquareHours(location: SquareLocation): LocationHours {
+    const hours: LocationHours = {
+        sunday: [],
+        monday: [],
+        tuesday: [],
+        wednesday: [],
+        thursday: [],
+        friday: [],
+        saturday: [],
+    };
+    const timezone = location.timezone ?? "";
+
+    for (const period of location.businessHours?.periods ?? []) {
+        if (!period.dayOfWeek || !period.startLocalTime || !period.endLocalTime)
+            continue;
+        hours[SQUARE_DAYS[period.dayOfWeek]].push({
+            open: { time: period.startLocalTime, timezone },
+            close: { time: period.endLocalTime, timezone },
+        });
+    }
+    return hours;
+}
+
+/**
+ * Maps a Square location into the provider-agnostic Location.
+ * @param location the Square location, which must have an id
+ * @returns the location
+ */
+function mapSquareLocation(
+    location: SquareLocation & { id: string },
+): Location {
+    const address = location.address;
+    const country = (address?.country ?? location.country) as CountryCode;
+    const addressLine2 = [address?.addressLine2, address?.addressLine3]
+        .filter(Boolean)
+        .join(", ");
+
+    return {
+        id: location.id,
+        name: location.name ?? location.businessName ?? location.id,
+        address: {
+            country,
+            organization: location.businessName ?? undefined,
+            address_line_1: address?.addressLine1 ?? "",
+            address_line_2: addressLine2 || undefined,
+            dependent_locality: address?.sublocality ?? undefined,
+            locality: address?.locality ?? undefined,
+            subdivision: address?.administrativeDistrictLevel1 ?? undefined,
+            postal_code: address?.postalCode ?? undefined,
+        },
+        currency:
+            (location.currency as CurrencyCode | undefined) ??
+            COUNTRIES[country]?.currency,
+        phone_number: location.phoneNumber ?? "",
+        website_url: location.websiteUrl ?? "",
+        email: location.businessEmail ?? "",
+        hours: mapSquareHours(location),
+        logo_url: location.logoUrl ?? "",
+    };
+}
+
+/**
+ * Fetches the seller's locations from Square.
+ * @returns the locations
+ */
+async function fetchLocations(): Promise<Location[]> {
+    const response = await client.locations.list();
+    return (response.locations ?? [])
+        .filter((location): location is SquareLocation & { id: string } =>
+            Boolean(location.id),
+        )
+        .map(mapSquareLocation)
+        .filter((location) => {
+            // Locations are persisted with a required currency; one with
+            // neither a currency nor a known country would fail the import.
+            if (!location.currency) {
+                console.warn(
+                    `Skipping Square location ${location.id}: unknown currency`,
+                );
+            }
+            return Boolean(location.currency);
+        });
+}
+
 /**
  * Creates an order with square
  * @param order the order to create
@@ -245,7 +350,7 @@ async function createOrder(order: Order): Promise<Order | undefined | null> {
                 if (li.pricingType === "VARIABLE" && li.priceMoney) {
                     lineItem.basePriceMoney = {
                         amount: toBigIntAmount(li.priceMoney.amount),
-                        currency: li.priceMoney.currency,
+                        currency: li.priceMoney.currency as Currency,
                     };
                 }
                 return lineItem;
@@ -486,6 +591,7 @@ export const squareProvider: CatalogProvider &
     PaymentProvider &
     DevicePairingProvider = {
     fetchCatalog,
+    fetchLocations,
     createOrder,
     fetchOrder,
     createTerminalCheckout,
