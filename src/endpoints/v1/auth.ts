@@ -3,14 +3,33 @@ import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 import { toNodeHandler } from "better-auth/node";
 import express from "express";
 import { Router } from "express";
+import { FixedWindowLimiter, clientKey } from "@/utils/rateLimiter";
 import { getParamValue } from "@/utils/expressHelpers";
 import { hasScope, requireScope } from "@/middleware/authenticate";
 import { getConfigDeviceByID } from "@/services/db/configDevice";
+import { closeSocketsForPrincipal } from "@/services/websocket/websocket";
 import {
     issueDeviceToken,
     pairingCodeMatches,
     revokeDeviceToken,
 } from "@/auth/deviceToken";
+
+/** Failed device-token exchanges a client IP may make per window. */
+export const DEVICE_TOKEN_MAX_FAILURES = 10;
+/** Length of the failed-exchange window. */
+export const DEVICE_TOKEN_WINDOW_MS = 15 * 60 * 1000;
+
+// Per process (see FixedWindowLimiter), keyed by req.ip. Only failures count:
+// an admin or a correct pairing code is never slowed down.
+const exchangeFailures = new FixedWindowLimiter(
+    DEVICE_TOKEN_MAX_FAILURES,
+    DEVICE_TOKEN_WINDOW_MS,
+);
+
+/** Clears the device-token failure counts (tests). */
+export function resetDeviceTokenLimits(): void {
+    exchangeFailures.reset();
+}
 
 const authRouter: Router = express.Router();
 
@@ -33,6 +52,12 @@ authRouter.post("/device-token", async (req, res) => {
         return;
     }
     const isAdmin = !!req.principal && hasScope(req.principal, "devices:admin");
+    const key = clientKey(req);
+    if (!isAdmin && exchangeFailures.isLimited(key)) {
+        res.setHeader("Retry-After", exchangeFailures.retryAfterSeconds(key));
+        res.status(429).json({ message: "Too many failed attempts" });
+        return;
+    }
     const device = await getConfigDeviceByID(deviceId);
     const hasProof =
         isAdmin ||
@@ -40,7 +65,16 @@ authRouter.post("/device-token", async (req, res) => {
             pairingCodeMatches(req.body?.pairingCode, device.pairing_code));
     // Same answer for "no such device" and "wrong proof", so ids can't be probed.
     if (!hasProof) {
+        exchangeFailures.record(key);
         res.status(401).json({ message: "Unauthorized" });
+        return;
+    }
+    // A LOCAL till runs in a staff browser on the staff session; it has no
+    // token. Refused even for devices:admin.
+    if (device?.device_type === "LOCAL") {
+        res.status(400).json({
+            message: "Local tills do not use device tokens",
+        });
         return;
     }
     const token = await issueDeviceToken(deviceId);
@@ -60,6 +94,7 @@ authRouter.delete(
             res.status(404).json({ message: "Device not found" });
             return;
         }
+        closeSocketsForPrincipal(deviceId);
         res.json({ message: "Device token revoked" });
     },
 );

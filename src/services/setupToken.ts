@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { Logger } from "tslog";
 import { safeEqual } from "@/services/crypto";
+import { FixedWindowLimiter } from "@/utils/rateLimiter";
 
 const logger = new Logger();
 
@@ -54,7 +55,8 @@ export const MAX_FAILED_ATTEMPTS = 10;
 /** Length of the fixed window. */
 export const FAILURE_WINDOW_MS = 15 * 60 * 1000;
 
-const failures = new Map<string, { count: number; resetAt: number }>();
+// Per process, like every limiter built on FixedWindowLimiter.
+const failures = new FixedWindowLimiter(MAX_FAILED_ATTEMPTS, FAILURE_WINDOW_MS);
 
 /**
  * Whether a client has used up its failed-token attempts for this window.
@@ -63,13 +65,7 @@ const failures = new Map<string, { count: number; resetAt: number }>();
  * @returns true when further attempts should get 429
  */
 export function isRateLimited(key: string, now = Date.now()): boolean {
-    const entry = failures.get(key);
-    if (!entry) return false;
-    if (entry.resetAt <= now) {
-        failures.delete(key);
-        return false;
-    }
-    return entry.count >= MAX_FAILED_ATTEMPTS;
+    return failures.isLimited(key, now);
 }
 
 /**
@@ -78,15 +74,10 @@ export function isRateLimited(key: string, now = Date.now()): boolean {
  * @param now current time in ms
  */
 export function recordFailure(key: string, now = Date.now()): void {
-    const entry = failures.get(key);
-    if (!entry || entry.resetAt <= now) {
-        failures.set(key, { count: 1, resetAt: now + FAILURE_WINDOW_MS });
-    } else {
-        entry.count += 1;
-    }
+    failures.record(key, now);
 }
 
 /** Clears all rate-limit state (tests). */
 export function resetRateLimits(): void {
-    failures.clear();
+    failures.reset();
 }

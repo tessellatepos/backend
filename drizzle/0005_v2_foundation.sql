@@ -84,6 +84,7 @@ CREATE TABLE "tessellate-setup-state" (
 	"completed_at" timestamp with time zone NOT NULL
 );
 --> statement-breakpoint
+ALTER TABLE "tessellate-devices-config" ALTER COLUMN "square_location" SET DATA TYPE varchar(255);--> statement-breakpoint
 ALTER TABLE "tessellate-devices-config" ADD COLUMN "device_token_hash" text;--> statement-breakpoint
 ALTER TABLE "tessellate-auth-account" ADD CONSTRAINT "tessellate-auth-account_user_id_tessellate-auth-user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."tessellate-auth-user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "tessellate-auth-session" ADD CONSTRAINT "tessellate-auth-session_user_id_tessellate-auth-user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."tessellate-auth-user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

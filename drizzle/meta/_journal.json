@@ -40,8 +40,22 @@
     {
       "idx": 5,
       "version": "7",
-      "when": 1793309568433,
+      "when": 1793323932049,
       "tag": "0005_v2_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793464191587,
+      "tag": "0006_provider_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793473186892,
+      "tag": "0007_local_device_type",
       "breakpoints": true
     }
   ]

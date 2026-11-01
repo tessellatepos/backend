@@ -2,6 +2,8 @@ import { baseEndpoint } from "@/endpoints/base";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 import { configDevicev1Endpoint } from "@/endpoints/v1/config/devices";
 import { configSettingsv1Endpoint } from "@/endpoints/v1/config/settings";
+import { configProviderv1Endpoint } from "@/endpoints/v1/config/provider";
+import { configStorefrontsv1Endpoint } from "@/endpoints/v1/config/storefronts";
 import { customersv1Endpoint } from "@/endpoints/v1/customers";
 import { itemsv1Endpoint } from "@/endpoints/v1/items";
 import { locationsv1Endpoint } from "@/endpoints/v1/locations";
@@ -10,6 +12,7 @@ import { pluginsv1Endpoint } from "@/endpoints/v1/plugins";
 import { squarev1Endpoint } from "@/endpoints/v1/square";
 import { setupv1Endpoint } from "@/endpoints/v1/setup";
 import { authv1Endpoint } from "@/endpoints/v1/auth";
+import { usersv1Endpoint } from "@/endpoints/v1/users";
 import { authProvidersv1Endpoint } from "@/endpoints/v1/authProviders";
 
 export const routes: ITessellateApiRouter[] = [
@@ -18,6 +21,8 @@ export const routes: ITessellateApiRouter[] = [
     authProvidersv1Endpoint,
     configDevicev1Endpoint,
     configSettingsv1Endpoint,
+    configProviderv1Endpoint,
+    configStorefrontsv1Endpoint,
     customersv1Endpoint,
     itemsv1Endpoint,
     locationsv1Endpoint,
@@ -25,4 +30,5 @@ export const routes: ITessellateApiRouter[] = [
     pluginsv1Endpoint,
     squarev1Endpoint,
     setupv1Endpoint,
+    usersv1Endpoint,
 ];

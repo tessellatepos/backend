@@ -66,6 +66,26 @@ export function requireScope(...scopes: Scope[]): RequestHandler {
 }
 
 /**
+ * Guard: 401 without a principal, otherwise any authenticated principal
+ * passes. For surfaces whose handlers decide their own authorization (plugin
+ * API routes).
+ * @param req the request
+ * @param res the response
+ * @param next continues the chain
+ */
+export function requireAuthenticated(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+) {
+    if (req.principal) {
+        next();
+    } else {
+        res.status(401).json({ message: "Unauthorized" });
+    }
+}
+
+/**
  * Guard: 403 when the principal is restricted to locations that do not
  * include the one the request targets. Run after {@link requireScope}.
  * @param getLocationId reads the target location id from the request

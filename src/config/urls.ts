@@ -17,6 +17,18 @@ const logger = new Logger();
 /** The Vite dev server origin, trusted outside production. */
 export const DEV_FRONTEND_ORIGIN = "http://localhost:5173";
 
+/** Matches `http://localhost:<port>` and `http://127.0.0.1:<port>`. */
+const DEV_LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1):\d{1,5}$/;
+
+/**
+ * Whether an Origin is a local dev origin on any port.
+ * @param origin the Origin header value
+ * @returns true for http://localhost:<port> and http://127.0.0.1:<port>
+ */
+export function isDevLocalOrigin(origin: string | undefined): boolean {
+    return !!origin && DEV_LOCAL_ORIGIN.test(origin);
+}
+
 /** Value accepted by Express's `trust proxy` setting. */
 export type TrustProxy = boolean | number | string[];
 
@@ -40,6 +52,8 @@ export interface UrlConfig {
     authBaseUrl: string | undefined;
     /** Origins allowed to make cross-origin calls to internal routes. */
     corsOrigins: string[];
+    /** True outside production: any local dev port is trusted as an origin. */
+    allowDevOrigins: boolean;
 }
 
 const LEGACY_VARS = [
@@ -168,6 +182,7 @@ export function loadUrlConfig(
         squareRedirectUrl,
         authBaseUrl: trimmed(env.BETTER_AUTH_URL),
         corsOrigins: [...new Set(corsOrigins)],
+        allowDevOrigins: env.NODE_ENV !== "production",
     };
 }
 
@@ -281,7 +296,8 @@ export function evaluateHost(
  * Origins better-auth should trust for a request.
  * @param request the incoming request, when better-auth has one
  * @param config the configuration to use
- * @returns the request's own origin plus PUBLIC_URL when set
+ * @returns the request's own origin plus PUBLIC_URL when set, and outside
+ * production any local dev origin (`http://localhost:*`, `http://127.0.0.1:*`)
  */
 export function trustedOrigins(
     request?: Request,
@@ -292,5 +308,8 @@ export function trustedOrigins(
     if (own) origins.push(own);
     if (config.publicUrl) origins.push(config.publicUrl);
     origins.push(...config.corsOrigins);
+    if (config.allowDevOrigins) {
+        origins.push("http://localhost:*", "http://127.0.0.1:*");
+    }
     return [...new Set(origins)];
 }

@@ -5,9 +5,11 @@ import {
     gatewayBase,
     loadUrlConfig,
     normalizeHost,
+    isDevLocalOrigin,
     trustedOrigins,
     webhookUrl,
 } from "@/config/urls";
+import { isOriginAllowed } from "@/middleware/cors";
 
 const load = (env: Record<string, string>) => {
     const warnings: string[] = [];
@@ -162,5 +164,49 @@ describe("evaluateHost", () => {
         assert.equal(evaluateHost("pos.lan", "/", c), "ok");
         assert.equal(evaluateHost("evil.test", "/", c), "misdirected");
         assert.equal(evaluateHost(null, "/", c), "misdirected");
+    });
+});
+
+describe("dev origins", () => {
+    const dev = loadUrlConfig({ NODE_ENV: "development" }).allowDevOrigins;
+    const prod = loadUrlConfig({
+        NODE_ENV: "production",
+        PUBLIC_URL: "https://shop.example.test",
+    });
+
+    it("recognises only http localhost / 127.0.0.1 with a port", () => {
+        assert.equal(isDevLocalOrigin("http://localhost:5999"), true);
+        assert.equal(isDevLocalOrigin("http://127.0.0.1:3000"), true);
+        assert.equal(isDevLocalOrigin("https://localhost:5999"), false);
+        assert.equal(isDevLocalOrigin("http://localhost"), false);
+        assert.equal(isDevLocalOrigin("http://localhost:80@evil.test"), false);
+        assert.equal(isDevLocalOrigin("http://localhost.evil.test:80"), false);
+        assert.equal(isDevLocalOrigin(undefined), false);
+    });
+
+    it("trusts local ports outside production only", () => {
+        assert.equal(dev, true);
+        const devConfig = loadUrlConfig({ NODE_ENV: "development" });
+        assert.ok(
+            trustedOrigins(undefined, devConfig).includes("http://localhost:*"),
+        );
+        assert.ok(
+            trustedOrigins(undefined, devConfig).includes("http://127.0.0.1:*"),
+        );
+        assert.deepEqual(trustedOrigins(undefined, prod), [
+            "https://shop.example.test",
+        ]);
+        assert.equal(prod.allowDevOrigins, false);
+    });
+
+    it("keeps CORS consistent with the same rule", () => {
+        const devConfig = loadUrlConfig({ NODE_ENV: "development" });
+        const origin = "http://localhost:5999";
+        assert.equal(isOriginAllowed(origin, "api.test", devConfig), true);
+        assert.equal(isOriginAllowed(origin, "api.test", prod), false);
+        assert.equal(
+            isOriginAllowed("https://evil.test", "api.test", devConfig),
+            false,
+        );
     });
 });

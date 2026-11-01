@@ -6,7 +6,7 @@ import type {
     CustomerQuery,
 } from "@tessellatepos/sdk";
 import { customerStore, searchCustomers } from "@/services/db/customers";
-import { activeProvider } from "@/services/providers";
+import { getActiveProvider } from "@/services/providers";
 
 /**
  * Thrown for customer input that fails validation. Messages name the field
@@ -145,7 +145,7 @@ export function validateCustomerInput(raw: unknown): CustomerInput {
  * @returns the created customer
  */
 export async function createCustomer(raw: unknown): Promise<Customer> {
-    const created = await activeProvider.createCustomer(
+    const created = await getActiveProvider().createCustomer(
         validateCustomerInput(raw),
     );
     await customerStore.upsert(created);
@@ -163,7 +163,7 @@ export async function updateCustomer(
     id: string,
     raw: unknown,
 ): Promise<Customer | null> {
-    const updated = await activeProvider.updateCustomer(
+    const updated = await getActiveProvider().updateCustomer(
         id,
         validateCustomerInput(raw),
     );
@@ -182,7 +182,7 @@ export async function updateCustomer(
  * @returns true if the customer existed in the provider or in Postgres
  */
 export async function deleteCustomer(id: string): Promise<boolean> {
-    const deletedUpstream = await activeProvider.deleteCustomer(id);
+    const deletedUpstream = await getActiveProvider().deleteCustomer(id);
     const deletedLocally = await customerStore.remove(id);
     return deletedUpstream || deletedLocally;
 }
