@@ -34,6 +34,8 @@ export const configDevicesTable = pgTable("tessellate-devices-config", {
     square_device_id: text("square_device_id"),
     square_device_code_id: text("square_device_code_id"),
     square_pair_by: timestamp("square_pair_by", { withTimezone: true }),
+    // sha-256 (hex) of the device's API token; the token itself is never stored.
+    device_token_hash: text("device_token_hash").unique(),
 });
 
 export const configSystemTable = pgTable("tessellate-system-config", {
@@ -49,6 +51,31 @@ export const configSystemTable = pgTable("tessellate-system-config", {
         withTimezone: true,
     }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+/**
+ * Owner-managed settings for plugin sign-in methods. `config` is a JSON
+ * document (client id and secret, discovery URL, scopes) encrypted with
+ * services/crypto.ts; it is never stored or returned in plaintext.
+ */
+export const authProviderSettingsTable = pgTable("tessellate-auth-providers", {
+    providerId: text("provider_id").primaryKey(),
+    pluginName: text("plugin_name").notNull(),
+    enabled: boolean("enabled").notNull().default(false),
+    config: text("config").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+        .notNull()
+        .defaultNow(),
+});
+
+/**
+ * First-run setup state: a single row (id 1) once setup has been marked
+ * complete. Kept apart from the system config, whose Square token columns
+ * are required.
+ */
+export const setupStateTable = pgTable("tessellate-setup-state", {
+    id: integer("id").primaryKey(),
+    completedAt: timestamp("completed_at", { withTimezone: true }).notNull(),
 });
 
 export const ordersTable = pgTable("tessellate-orders", {
@@ -168,3 +195,97 @@ export const pluginRegistryTable = pgTable("tessellate-plugin-registry", {
     tables: jsonb("tables"),
     installedAt: timestamp("installed_at"),
 });
+
+// ---------------------------------------------------------------------------
+// better-auth tables
+//
+// Hand-written from better-auth's core schema plus the `admin` and `username`
+// plugin schemas (the better-auth CLI is not usable here, see the A1 notes).
+// Property names must match better-auth's field names; the SQL table and
+// column names are ours. services/auth.ts hands these to the Drizzle adapter
+// through its `schema` option, keyed by better-auth's model names.
+// ---------------------------------------------------------------------------
+
+export const authUserTable = pgTable("tessellate-auth-user", {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    email: text("email").notNull().unique(),
+    emailVerified: boolean("email_verified").notNull().default(false),
+    image: text("image"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+        .notNull()
+        .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+        .notNull()
+        .defaultNow(),
+    // username plugin
+    username: text("username").unique(),
+    displayUsername: text("display_username"),
+    // admin plugin
+    role: text("role"),
+    banned: boolean("banned").default(false),
+    banReason: text("ban_reason"),
+    banExpires: timestamp("ban_expires", { withTimezone: true }),
+});
+
+export const authSessionTable = pgTable("tessellate-auth-session", {
+    id: text("id").primaryKey(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    token: text("token").notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+        .notNull()
+        .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    userId: text("user_id")
+        .notNull()
+        .references(() => authUserTable.id, { onDelete: "cascade" }),
+    // admin plugin
+    impersonatedBy: text("impersonated_by"),
+});
+
+export const authAccountTable = pgTable("tessellate-auth-account", {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    userId: text("user_id")
+        .notNull()
+        .references(() => authUserTable.id, { onDelete: "cascade" }),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at", {
+        withTimezone: true,
+    }),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at", {
+        withTimezone: true,
+    }),
+    scope: text("scope"),
+    password: text("password"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+        .notNull()
+        .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+});
+
+export const authVerificationTable = pgTable("tessellate-auth-verification", {
+    id: text("id").primaryKey(),
+    identifier: text("identifier").notNull(),
+    value: text("value").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+        .notNull()
+        .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+        .notNull()
+        .defaultNow(),
+});
+
+/** The better-auth tables keyed by better-auth model name, for the adapter. */
+export const authSchema = {
+    user: authUserTable,
+    session: authSessionTable,
+    account: authAccountTable,
+    verification: authVerificationTable,
+};

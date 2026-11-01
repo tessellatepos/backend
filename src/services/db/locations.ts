@@ -7,7 +7,8 @@ import type {
 import { createLocalStore, emptyIfNull, nullIfEmpty } from "@/services/store";
 import { locationsTable } from "./schema";
 
-const EMPTY_HOURS: LocationHours = {
+/** Hours for a location with none set yet. */
+export const EMPTY_HOURS: LocationHours = {
     sunday: [],
     monday: [],
     tuesday: [],
