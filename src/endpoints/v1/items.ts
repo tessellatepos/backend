@@ -8,6 +8,7 @@ import { updateCatalogInCache } from "@/services/catalogSync";
 import { getParamValue } from "@/utils/expressHelpers";
 import { requireLocation, requireScope } from "@/middleware/authenticate";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
+import { itemListSchema } from "@/gateway/schemas/catalog";
 
 const itemRouter: Router = express.Router();
 
@@ -17,6 +18,28 @@ export const itemsv1Endpoint: ITessellateApiRouter = {
     route_path: "/items",
     version: "v1",
     router: itemRouter,
+    gateway: [
+        {
+            method: "GET",
+            path: "/",
+            internalPath: "/by-location/",
+            operationId: "items.list",
+            scope: "catalog:read",
+            summary: "List catalog items at the credential's locations",
+            location: "none",
+            response: itemListSchema,
+        },
+        {
+            method: "GET",
+            path: "/:locationId",
+            internalPath: "/by-location/:locationId",
+            operationId: "items.listAtLocation",
+            scope: "catalog:read",
+            summary: "List catalog items at one location",
+            location: "path",
+            response: itemListSchema,
+        },
+    ],
 };
 
 /**

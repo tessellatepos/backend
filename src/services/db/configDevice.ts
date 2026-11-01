@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 import { configDevicesTable } from "./schema";
 import { drizzleDB } from "@/services/db/postgres";
@@ -81,10 +81,10 @@ export function withoutTokenHash<T extends object>(
 }
 
 /**
- * Creates a LOCAL till pinned to a location. It is paired from the start, so
- * it has no pairing code and no hardware id.
+ * Creates a LOCAL till pinned to a location, or returns the one it already has.
+ * It is paired from the start, so it has no pairing code and no hardware id.
  * @param locationId the location the till sells for (any provider's id)
- * @returns the inserted row (it has no token hash)
+ * @returns the device row, inserted or existing (it has no token hash)
  */
 export async function createLocalDevice(
     locationId: string,
@@ -102,8 +102,26 @@ export async function createLocalDevice(
         device_hardware_id: null,
         device_type: "LOCAL",
     };
-    await db.insert(configDevicesTable).values(deviceConfig);
-    return deviceConfig;
+    // A concurrent create for the same location loses here and gets the row
+    // the winner inserted, so the till is never duplicated.
+    const inserted = await db
+        .insert(configDevicesTable)
+        .values(deviceConfig)
+        .onConflictDoNothing({
+            target: configDevicesTable.square_location,
+            where: sql`tessellate_is_local_till(${configDevicesTable.device_type})`,
+        })
+        .returning({ id: configDevicesTable.id });
+    if (inserted.length > 0) {
+        return deviceConfig;
+    }
+    const existing = await getLocalDeviceForLocation(locationId, db);
+    if (!existing) {
+        throw new Error(
+            `LOCAL device for ${locationId} vanished after conflict`,
+        );
+    }
+    return existing;
 }
 
 /**

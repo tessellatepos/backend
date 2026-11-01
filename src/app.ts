@@ -10,6 +10,9 @@ import { hostGuard } from "@/middleware/hostGuard";
 import { surfaceMiddleware } from "@/middleware/surface";
 import { surfaceCors } from "@/middleware/cors";
 import { authenticate } from "@/middleware/authenticate";
+import { installGatewayPrincipals } from "@/gateway/principal";
+import { buildGatewayRegistry } from "@/gateway/registry";
+import { populateGatewayRouter } from "@/gateway/router";
 
 /**
  * Builds the Express app with the middleware every request goes through and
@@ -18,6 +21,7 @@ import { authenticate } from "@/middleware/authenticate";
  * @returns the app, without routes
  */
 export function createApp(): Express {
+    installGatewayPrincipals();
     const app = express();
     app.set("trust proxy", urlConfig.trustProxy);
 
@@ -52,5 +56,9 @@ export function mountApiRoutes(
     const apiRegistry = new TessellateApiRegistry(app, pluginApi);
     for (const route of list) apiRegistry.registerRouter(route);
     apiRegistry.loadRoutes();
+    // Generated from the declarations, so it runs after plugins have loaded.
+    populateGatewayRouter(
+        buildGatewayRegistry(list, pluginApi.gatewayEntries()),
+    );
     return apiRegistry;
 }

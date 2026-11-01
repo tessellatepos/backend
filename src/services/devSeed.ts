@@ -1,8 +1,12 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import type { CountryCode, CurrencyCode, ProviderId } from "@tessellatepos/sdk";
 import { Logger } from "tslog";
 import { createLocalDevice } from "@/services/db/configDevice";
+import { importCatalogCsv } from "@/services/db/catalogImport";
+import { listItems } from "@/services/db/catalogManage";
 import { createLocalLocation } from "@/services/db/locations";
-import { setActiveProvider } from "@/services/providers";
+import { setActiveProvider, visibleCatalogScope } from "@/services/providers";
 import { completeSetup, createOwner, hasUsers } from "@/services/setup";
 
 const logger = new Logger();
@@ -10,6 +14,17 @@ const logger = new Logger();
 /** Default owner credentials. Development only. */
 export const DEV_SEED_USERNAME = "admin";
 export const DEV_SEED_PASSWORD = "password";
+
+/**
+ * The demo catalog, sold at "Test Store". Lives beside this module's parent
+ * in src/seed, and the build copies it to dist/seed.
+ */
+export const DEV_SEED_CATALOG_PATH = path.join(
+    __dirname,
+    "..",
+    "seed",
+    "demo-catalog.csv",
+);
 
 /** The env vars the seed reads. Passed in so the seed is testable. */
 export interface DevSeedEnv {
@@ -30,6 +45,10 @@ export interface DevSeedDeps {
     }): Promise<{ id: string }>;
     createDevice(locationId: string): Promise<unknown>;
     setProvider(id: ProviderId): Promise<void>;
+    /** Items the catalog holds, as the active provider counts them. */
+    countCatalogItems(): Promise<number>;
+    /** Imports the demo catalog; resolves true when the import was applied. */
+    importDemoCatalog(): Promise<boolean>;
     completeSetup(): Promise<void>;
     log: {
         info(...args: unknown[]): void;
@@ -54,6 +73,22 @@ export const devSeedDeps: DevSeedDeps = {
     createLocation: createLocalLocation,
     createDevice: (locationId) => createLocalDevice(locationId),
     setProvider: setActiveProvider,
+    countCatalogItems: async () =>
+        (
+            await listItems(
+                { limit: 1, offset: 0, archived: "all" },
+                visibleCatalogScope(),
+                { allowedLocations: "all" },
+            )
+        ).total,
+    importDemoCatalog: async () =>
+        (
+            await importCatalogCsv(
+                readFileSync(DEV_SEED_CATALOG_PATH, "utf8"),
+                { dryRun: false },
+                { allowedLocations: "all" },
+            )
+        ).applied,
     completeSetup,
     log: logger,
 };
@@ -73,7 +108,8 @@ export function refusalReason(env: DevSeedEnv): string | null {
 /**
  * Development only. With DEV_SEED=true and an empty user table, creates the
  * owner admin / password, a "Test Store" with a LOCAL till, the local
- * provider, and marks setup complete, so the instance goes straight to
+ * provider, the demo catalog (when the catalog is empty), and marks setup
+ * complete, so the instance goes straight to
  * sign-in. Does nothing once any user exists. Refuses (logs an error and
  * changes nothing) under NODE_ENV=production or alongside SETUP_TOKEN or
  * PUBLIC_URL.
@@ -111,6 +147,12 @@ export async function runDevSeed(
         });
         await deps.createDevice(location.id);
         await deps.setProvider("local");
+        // Only into an empty catalog, so a re-seed never duplicates rows.
+        if ((await deps.countCatalogItems()) === 0) {
+            if (!(await deps.importDemoCatalog())) {
+                throw new Error("the demo catalog import was rejected");
+            }
+        }
         await deps.completeSetup();
     } catch (err) {
         deps.log.error(

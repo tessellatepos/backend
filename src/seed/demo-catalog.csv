@@ -1,0 +1,34 @@
+item name,variation name,sku,upc,price,currency,category,locations,taxable,archived
+Quaker Chewy Bar,,,,0.75,CAD,CSSA-Lounge;Snacks,Test Store,true,false
+Protein Bar (Mint Chocolate),,,,2.00,CAD,CSSA-Lounge;Snacks,Test Store,true,false
+Pizza Pops (2-pack),,,,2.25,CAD,CSSA-Lounge;Meals,Test Store,true,false
+Mr. Noodles,,,,2.00,CAD,CSSA-Lounge;Meals,Test Store,true,false
+Power Ade,,,,1.00,CAD,CSSA-Lounge;Drinks,Test Store,true,false
+PC Granola Bar,,,,0.75,CAD,CSSA-Lounge;Snacks,Test Store,true,false
+Dipps Granola Bar,,,,0.75,CAD,CSSA-Lounge;Snacks,Test Store,true,false
+Popcorn,,,,0.75,CAD,CSSA-Lounge;Snacks,Test Store,true,false
+Peace Tea,,,,2.25,CAD,CSSA-Lounge;Drinks,Test Store,true,false
+Protein Bar (White Chocolate),,,,2.00,CAD,CSSA-Lounge;Snacks,Test Store,true,false
+Protein Bar (Brownie),,,,2.00,CAD,CSSA-Lounge;Snacks,Test Store,true,false
+Pogos,,,,1.25,CAD,CSSA-Lounge;Meals,Test Store,true,false
+Shin Ramen,,,,2.00,CAD,CSSA-Lounge;Meals,Test Store,true,false
+Coke,,,,1.00,CAD,CSSA-Lounge;Drinks,Test Store,true,false
+Dunkaroos,,,,2.00,CAD,CSSA-Lounge;Snacks,Test Store,true,false
+Kool-Aid,,,,0.50,CAD,CSSA-Lounge;Drinks,Test Store,true,false
+Lays Chips,,,,1.00,CAD,CSSA-Lounge;Snacks,Test Store,true,false
+Coke Zero,,,,1.00,CAD,CSSA-Lounge;Drinks,Test Store,true,false
+Munchies Peanuts,,,,1.00,CAD,CSSA-Lounge;Snacks,Test Store,true,false
+Fresca,,,,1.00,CAD,CSSA-Lounge;Drinks,Test Store,true,false
+Nature Valley Granola Bar,,,,0.75,CAD,CSSA-Lounge;Snacks,Test Store,true,false
+Freezies,,,,0.50,CAD,CSSA-Lounge;Snacks,Test Store,true,false
+Kraft Dinner Cup,,,,2.50,CAD,CSSA-Lounge;Meals,Test Store,true,false
+Chewy Yogurt Granola Bar,,,,0.75,CAD,CSSA-Lounge;Snacks,Test Store,true,false
+Protein Bar (Peanut Butter),,,,2.00,CAD,CSSA-Lounge;Snacks,Test Store,true,false
+Energy Drinks,,,,2.75,CAD,CSSA-Lounge;Drinks,Test Store,true,false
+Cheese Cracker Dips,,,,0.50,CAD,CSSA-Lounge;Snacks,Test Store,true,false
+Old Dutch Chips,,,,1.00,CAD,CSSA-Lounge;Snacks,Test Store,true,false
+Juice Box,,,,0.50,CAD,CSSA-Lounge;Drinks,Test Store,true,false
+Test Item with Really Long Name,Large,,,12.00,CAD,,Test Store,true,false
+Test Item with Really Long Name,Small,,,8.00,CAD,,Test Store,true,false
+Test Item with Really Long Name,Medium,,,10.00,CAD,,Test Store,true,false
+Michelina's Frozen Dinner,test,,,2.50,CAD,CSSA-Lounge;Meals,Test Store,true,false

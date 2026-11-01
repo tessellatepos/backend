@@ -6,6 +6,8 @@ import { configSettingsv1Endpoint } from "@/endpoints/v1/config/settings";
 import { configProviderv1Endpoint } from "@/endpoints/v1/config/provider";
 import { configStorefrontsv1Endpoint } from "@/endpoints/v1/config/storefronts";
 import { dashboardv1Endpoint } from "@/endpoints/v1/dashboard";
+import { credentialsv1Endpoint } from "@/endpoints/v1/credentials";
+import { gatewayRouter } from "@/gateway/router";
 import { customersv1Endpoint } from "@/endpoints/v1/customers";
 import { itemsv1Endpoint } from "@/endpoints/v1/items";
 import { locationsv1Endpoint } from "@/endpoints/v1/locations";
@@ -19,6 +21,13 @@ import { authProvidersv1Endpoint } from "@/endpoints/v1/authProviders";
 
 export const routes: ITessellateApiRouter[] = [
     baseEndpoint,
+    // The gateway is generated from the other routers; see mountApiRoutes.
+    {
+        route_path: "/gateway/v1",
+        version: "v1",
+        override_default: true,
+        router: gatewayRouter,
+    },
     authv1Endpoint,
     authProvidersv1Endpoint,
     catalogv1Endpoint,
@@ -26,6 +35,7 @@ export const routes: ITessellateApiRouter[] = [
     configSettingsv1Endpoint,
     configProviderv1Endpoint,
     configStorefrontsv1Endpoint,
+    credentialsv1Endpoint,
     customersv1Endpoint,
     dashboardv1Endpoint,
     itemsv1Endpoint,

@@ -88,6 +88,23 @@ async function resolveHeaders(
     }
 }
 
+/** Resolves a socket's credentials again. A failed lookup throws. */
+export type SocketLookup = (
+    headers: IncomingHttpHeaders,
+) => Promise<Principal | null>;
+
+/**
+ * Resolves headers strictly: `null` means the credentials are positively
+ * gone, a throw means the lookup itself failed.
+ */
+const resolveHeadersStrict: SocketLookup = (headers) =>
+    resolvePrincipal({ headers, surface: "internal" } as unknown as Request, {
+        strict: true,
+    });
+
+/** Whether the last revalidation pass failed, so the log is written once. */
+let revalidateFailing = false;
+
 /**
  * Resolves who is opening a WebSocket: a better-auth session cookie, or a
  * device token passed as `?access_token=` (or the usual Authorization
@@ -127,15 +144,27 @@ export function closeSocketsForPrincipal(principalId: string): number {
 
 /**
  * Re-resolves every open socket's principal from the credentials captured at
- * upgrade, closing sockets whose principal no longer resolves. A socket that
- * still resolves takes on its current principal (role or location changes).
+ * upgrade. A socket whose principal is positively gone (no session, banned,
+ * device revoked) is closed. A socket whose lookup fails (database down) is
+ * kept and retried on the next pass. A socket that still resolves takes on
+ * its current principal (role or location changes).
+ * @param lookup resolves a socket's headers; a throw means "unknown"
  * @returns how many sockets were closed
  */
-export async function revalidateSockets(): Promise<number> {
+export async function revalidateSockets(
+    lookup: SocketLookup = resolveHeadersStrict,
+): Promise<number> {
     let closed = 0;
+    let failed = 0;
     await Promise.all(
         [...clients].map(async ([ws, client]) => {
-            const principal = await resolveHeaders(client.headers);
+            let principal: Principal | null;
+            try {
+                principal = await lookup(client.headers);
+            } catch {
+                failed++;
+                return;
+            }
             if (!clients.has(ws)) return;
             if (principal) {
                 client.principal = principal;
@@ -145,6 +174,12 @@ export async function revalidateSockets(): Promise<number> {
             }
         }),
     );
+    if (failed > 0 && !revalidateFailing) {
+        logger.warn(
+            `WebSocket revalidation failed for ${failed} socket(s); keeping them open and retrying`,
+        );
+    }
+    revalidateFailing = failed > 0;
     return closed;
 }
 

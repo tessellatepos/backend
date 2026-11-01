@@ -47,6 +47,12 @@ function untouchableDeps() {
         createLocation: boom("createLocation") as DevSeedDeps["createLocation"],
         createDevice: boom("createDevice"),
         setProvider: boom("setProvider") as DevSeedDeps["setProvider"],
+        countCatalogItems: boom(
+            "countCatalogItems",
+        ) as DevSeedDeps["countCatalogItems"],
+        importDemoCatalog: boom(
+            "importDemoCatalog",
+        ) as DevSeedDeps["importDemoCatalog"],
         completeSetup: boom("completeSetup"),
         log: captureLog().log,
     };
@@ -231,6 +237,17 @@ describe("DEV_SEED", () => {
             });
         });
 
+        it("loads the demo catalog into the empty catalog", async () => {
+            const count = async (table: string) =>
+                Number(
+                    (await pool.query(`SELECT count(*) AS n FROM "${table}"`))
+                        .rows[0].n,
+                );
+            assert.equal(await count("tessellate-catalog-items"), 31);
+            assert.equal(await count("tessellate-catalog-item-variations"), 33);
+            assert.equal(await count("tessellate-catalog-categories"), 4);
+        });
+
         it("uses a password that meets better-auth's minimum length", async () => {
             const { getAuth } = await import("@/services/auth");
             const { minPasswordLength } = (await getAuth().$context).password
@@ -257,10 +274,22 @@ describe("DEV_SEED", () => {
                     users: await count("tessellate-auth-user"),
                     locations: await count("tessellate-locations"),
                     devices: await count("tessellate-devices-config"),
+                    items: await count("tessellate-catalog-items"),
+                    variations: await count(
+                        "tessellate-catalog-item-variations",
+                    ),
+                    categories: await count("tessellate-catalog-categories"),
                 };
             };
             const before = await counts();
-            assert.deepEqual(before, { users: 1, locations: 1, devices: 1 });
+            assert.deepEqual(before, {
+                users: 1,
+                locations: 1,
+                devices: 1,
+                items: 31,
+                variations: 33,
+                categories: 4,
+            });
             const outcome = await runDevSeed(
                 { DEV_SEED: "true" },
                 { ...devSeedDeps, log: captureLog().log },

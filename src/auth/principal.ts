@@ -90,10 +90,13 @@ async function resolveDevice(req: Request): Promise<Principal | null> {
  * (cookie or bearer), then a device token, then extra "service" resolvers, and never credentials.
  * Webhooks authenticate by signature, so they get no principal.
  * @param req the request, tagged with `req.surface`
+ * @param options `strict` rethrows a failed lookup instead of answering
+ *   null, so a caller can tell "unknown" from "the database is down"
  * @returns the principal, or null when unauthenticated
  */
 export async function resolvePrincipal(
     req: Request,
+    { strict = false }: { strict?: boolean } = {},
 ): Promise<Principal | null> {
     const surface = req.surface ?? "internal";
     if (surface === "gateway") return runExtra(req, "credential");
@@ -102,13 +105,15 @@ export async function resolvePrincipal(
     try {
         const user = await resolveSession(req);
         if (user) return user;
-    } catch {
+    } catch (error) {
+        if (strict) throw error;
         // Treat an unreadable session as unauthenticated.
     }
     try {
         const device = await resolveDevice(req);
         if (device) return device;
-    } catch {
+    } catch (error) {
+        if (strict) throw error;
         // Treat an unreadable device record as unauthenticated.
     }
     return runExtra(req, "service");

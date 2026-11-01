@@ -93,6 +93,17 @@ export interface CatalogWriteProvider {
  * methods are optional — not every provider has hardware-reader concepts
  * (an in-house, cash-only provider omits both).
  */
+/**
+ * Thrown by a provider when a payment can't be applied because the order was
+ * already paid or changed underneath it. Maps to HTTP 409, not 500.
+ */
+export class OrderConflictError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "OrderConflictError";
+    }
+}
+
 export interface PaymentProvider {
     createOrder(order: Order): Promise<Order | undefined | null>;
     fetchOrder(orderId: string): Promise<Order | undefined | null>;

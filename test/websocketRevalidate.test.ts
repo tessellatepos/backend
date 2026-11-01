@@ -14,6 +14,7 @@ import {
 } from "@/services/db/configDevice";
 import {
     WS_REVALIDATE_INTERVAL_MS,
+    revalidateSockets,
     setupWebSocket,
 } from "@/services/websocket/websocket";
 import { authv1Endpoint } from "@/endpoints/v1/auth";
@@ -222,3 +223,77 @@ for (const [name, intervalMs] of [
         });
     });
 }
+
+describe("websocket revalidation with a failing lookup", () => {
+    let server: Server;
+    let base: string;
+    const sockets: WebSocket[] = [];
+    const deviceIds: string[] = [];
+
+    before(async () => {
+        await migrateTestDb();
+        server = createServer();
+        // Long interval: the test drives revalidateSockets directly.
+        setupWebSocket(server, 10 * 60_000);
+        await new Promise<void>((resolve) =>
+            server.listen(0, "127.0.0.1", resolve),
+        );
+        base = `ws://127.0.0.1:${(server.address() as AddressInfo).port}/ws`;
+    });
+
+    after(async () => {
+        for (const ws of sockets) ws.terminate();
+        server.closeAllConnections();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+        for (const id of deviceIds) await deleteConfigDevice(id);
+    });
+
+    async function connectDevice() {
+        const d = await createConfigDevice();
+        deviceIds.push(d.id);
+        await updateConfigDevice(d.id, {
+            pairing_code: null,
+            paired_at: new Date(),
+        });
+        const token = (await issueDeviceToken(d.id))!;
+        const c = await open(`${base}?access_token=${token}`);
+        sockets.push(c.ws);
+        return { ...c, id: d.id, token };
+    }
+
+    it("keeps sockets open when the lookup throws", async () => {
+        const d = await connectDevice();
+        const closedCount = await revalidateSockets(async () => {
+            throw new Error("connection terminated unexpectedly");
+        });
+        assert.equal(closedCount, 0);
+        assert.equal(await within(d.closed, 400), "open");
+        assert.equal(d.ws.readyState, WebSocket.OPEN);
+    });
+
+    it("closes only the sockets whose principal is positively gone", async () => {
+        const gone = await connectDevice();
+        const kept = await connectDevice();
+        const closedCount = await revalidateSockets(async (headers) => {
+            if (headers.authorization === `Bearer ${gone.token}`) return null;
+            throw new Error("transient");
+        });
+        assert.equal(closedCount, 1);
+        assert.deepEqual(await within(gone.closed, 1500), ENDED);
+        assert.equal(await within(kept.closed, 400), "open");
+    });
+
+    it("keeps a socket after a transient failure and closes it once it is gone", async () => {
+        const d = await connectDevice();
+        await revalidateSockets(async () => {
+            throw new Error("transient");
+        });
+        assert.equal(await within(d.closed, 300), "open");
+        const closedCount = await revalidateSockets(async (headers) => {
+            if (headers.authorization === `Bearer ${d.token}`) return null;
+            throw new Error("transient");
+        });
+        assert.equal(closedCount, 1);
+        assert.deepEqual(await within(d.closed, 1500), ENDED);
+    });
+});

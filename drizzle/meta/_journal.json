@@ -64,6 +64,27 @@
       "when": 1793475034344,
       "tag": "0008_catalog_origin",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793478338624,
+      "tag": "0009_dedupe_local_devices",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793478538037,
+      "tag": "0010_local_till_unique_per_location",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793479316840,
+      "tag": "0011_gateway_credentials",
+      "breakpoints": true
     }
   ]
 }

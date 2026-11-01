@@ -167,6 +167,29 @@ describe("LOCAL devices (cash-only tills in a staff browser)", () => {
             assert.equal(stored?.id, created.body.id);
         });
 
+        it("two concurrent creates for one location leave one till", async () => {
+            const location = await newLocation(`Race ${suffix}`);
+            const [first, second] = await Promise.all([
+                call("owner", "POST", "/api/v1/config/devices/local", {
+                    locationId: location.id,
+                }),
+                call("owner", "POST", "/api/v1/config/devices/local", {
+                    locationId: location.id,
+                }),
+            ]);
+            assert.ok([200, 201].includes(first.status));
+            assert.ok([200, 201].includes(second.status));
+            assert.equal(first.body.id, second.body.id);
+            deviceIds.push(first.body.id);
+
+            const rows = await pool.query(
+                `SELECT id FROM "tessellate-devices-config"
+                 WHERE device_type = 'LOCAL' AND square_location = $1`,
+                [location.id],
+            );
+            assert.equal(rows.rowCount, 1);
+        });
+
         it("validates the location", async () => {
             const missing = await call(
                 "owner",

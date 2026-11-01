@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { parseMoney, stripBigints } from "@tessellatepos/sdk";
 import type {
     Customer,
@@ -27,12 +27,26 @@ import {
     updateItem,
 } from "@/services/db/catalogManage";
 import { importCatalogCsv } from "@/services/db/catalogImport";
-import type {
-    CatalogProvider,
-    CatalogWriteProvider,
-    CustomerProvider,
-    PaymentProvider,
+import {
+    OrderConflictError,
+    type CatalogProvider,
+    type CatalogWriteProvider,
+    type CustomerProvider,
+    type PaymentProvider,
 } from "../types";
+
+/**
+ * Matches the order row only while its version is still the one we read.
+ * Orders created through POST /orders/create are stored with a NULL version,
+ * and `NULL = 0` is never true in SQL, so a null version needs IS NULL.
+ * @param currentVersion the version read from the row, or null/undefined
+ * @returns the where condition for the optimistic-lock update
+ */
+function versionMatches(currentVersion: number | null | undefined) {
+    return currentVersion == null
+        ? isNull(ordersTable.version)
+        : eq(ordersTable.version, currentVersion);
+}
 
 /**
  * Marks an order paid with a card tender for its full total and returns
@@ -46,6 +60,9 @@ async function markOrderPaidWithCard(orderId: string): Promise<boolean> {
     return drizzleDB.transaction(async (tx) => {
         const row = await getOrderById(orderId, tx);
         if (!row) return false;
+        if (row.state === "COMPLETED") {
+            throw new OrderConflictError("Order is already paid");
+        }
 
         const orderAmount = parseMoney(row.totalMoney);
         if (!orderAmount?.amount) return false;
@@ -73,13 +90,13 @@ async function markOrderPaidWithCard(orderId: string): Promise<boolean> {
             .where(
                 and(
                     eq(ordersTable.referenceId, orderId),
-                    eq(ordersTable.version, currentVersion),
+                    versionMatches(row.version),
                 ),
             )
             .returning({ id: ordersTable.id });
 
         if (result.length === 0) {
-            throw new Error(
+            throw new OrderConflictError(
                 "Concurrent modification detected — order was updated by another payment",
             );
         }
@@ -190,6 +207,9 @@ async function payCash(
     return drizzleDB.transaction(async (tx) => {
         const row = await getOrderById(orderId, tx);
         if (!row) return null;
+        if (row.state === "COMPLETED") {
+            throw new OrderConflictError("Order is already paid");
+        }
 
         const changeBackMoney: Money = {
             amount: changeAmount,
@@ -222,13 +242,13 @@ async function payCash(
             .where(
                 and(
                     eq(ordersTable.referenceId, orderId),
-                    eq(ordersTable.version, currentVersion),
+                    versionMatches(row.version),
                 ),
             )
             .returning({ id: ordersTable.id });
 
         if (result.length === 0) {
-            throw new Error(
+            throw new OrderConflictError(
                 "Concurrent modification detected — order was updated by another payment",
             );
         }
