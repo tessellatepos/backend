@@ -11,11 +11,17 @@ import type {
     Order,
     Tender,
 } from "@tessellatepos/sdk";
+import { Logger } from "tslog";
 import { drizzleDB } from "@/services/db/postgres";
-import { catalogItemVariationsTable, ordersTable } from "@/services/db/schema";
+import {
+    catalogItemVariationsTable,
+    catalogItemsTable,
+    ordersTable,
+} from "@/services/db/schema";
 import { getCatalogByLocation } from "@/services/db/catalog";
 import { customerStore, searchCustomers } from "@/services/db/customers";
 import { getLocations } from "@/services/db/locations";
+import { listLiveCheckouts } from "@/services/db/onlinePayments";
 import {
     getOrderById,
     openUnpaidOrder,
@@ -30,6 +36,7 @@ import {
     updateCategory,
     updateItem,
 } from "@/services/db/catalogManage";
+import { resolveVariationPricing } from "@/services/variationPricing";
 import { importCatalogCsv } from "@/services/db/catalogImport";
 import {
     InvalidOrderError,
@@ -54,6 +61,38 @@ function versionMatches(currentVersion: number | null | undefined) {
         : eq(ordersTable.version, currentVersion);
 }
 
+const logger = new Logger({ name: "local-provider" });
+
+/**
+ * After staff take payment in person, a hosted checkout the shopper started
+ * earlier may still be open. The processor interface has no way to void a
+ * checkout, so the attempt cannot be closed here: a later payment on it is
+ * recorded and logged as needing a refund by the webhook path. This only makes
+ * the overlap visible.
+ * @param orderId the order's reference id
+ * @param now the clock (tests inject one)
+ * @param warn where the warning goes (tests inject one)
+ */
+export async function warnIfOnlineCheckoutLive(
+    orderId: string,
+    now: Date = new Date(),
+    warn: (message: string) => void = (m) => logger.warn(m),
+): Promise<void> {
+    try {
+        const live = await listLiveCheckouts(orderId, now);
+        if (live.length > 0) {
+            warn(
+                `Order ${orderId} was paid in person while a hosted checkout is still open (${live.length}); it cannot be voided, a payment on it would need a refund`,
+            );
+        }
+    } catch (err) {
+        logger.error(
+            `Could not check live checkouts for order ${orderId}`,
+            err,
+        );
+    }
+}
+
 /**
  * Marks an order paid with a card tender for its full total and returns
  * whether it succeeded. Uses optimistic locking via the `version` column
@@ -63,11 +102,20 @@ function versionMatches(currentVersion: number | null | undefined) {
  * @returns true if the order was found and marked paid
  */
 async function markOrderPaidWithCard(orderId: string): Promise<boolean> {
+    const paid = await markOrderPaidWithCardTx(orderId);
+    if (paid) await warnIfOnlineCheckoutLive(orderId);
+    return paid;
+}
+
+async function markOrderPaidWithCardTx(orderId: string): Promise<boolean> {
     return drizzleDB.transaction(async (tx) => {
         const row = await getOrderById(orderId, tx);
         if (!row) return false;
         if (row.state === "COMPLETED") {
             throw new OrderConflictError("Order is already paid");
+        }
+        if (row.state === "CANCELED") {
+            throw new OrderConflictError("Order is canceled");
         }
 
         const orderAmount = parseMoney(row.totalMoney);
@@ -134,26 +182,43 @@ async function fetchLocations(): Promise<Location[]> {
 }
 
 /**
- * Prices one line for an online order: FIXED variations take the catalog
- * price and ignore the client's; VARIABLE ones take the client's, which must
+ * The most one unit may cost on an online order: 1,000,000.00 in minor units,
+ * assuming two decimal places like the catalog import does.
+ */
+export const MAX_UNIT_PRICE = 100_000_000n;
+
+/**
+ * Prices one line for an online order at a location: FIXED variations take
+ * the catalog price (the location's override if it has one) and ignore the
+ * client's; VARIABLE ones take the client's, which must
  * be positive and in the catalog currency.
  * @param lineItem the requested line
  * @param clientPrice the price the client sent, if any
- * @returns the unit price to charge
+ * @param locationId the order's location, for location price overrides
+ * @returns the unit price to charge, the catalog name, and whether it is fixed
  */
 async function catalogPricedLine(
     lineItem: Order["lineItems"] extends (infer L)[] | null | undefined
         ? L
         : never,
     clientPrice: Money | undefined,
-): Promise<Money | undefined> {
+    locationId: string | null | undefined,
+): Promise<{ price: Money; name: string | null; fixed: boolean }> {
     const [row] = lineItem.itemId
         ? await drizzleDB
               .select({
+                  name: catalogItemVariationsTable.name,
+                  itemName: catalogItemsTable.name,
                   priceMoney: catalogItemVariationsTable.priceMoney,
                   pricingType: catalogItemVariationsTable.pricingType,
+                  locationOverrides:
+                      catalogItemVariationsTable.locationOverrides,
               })
               .from(catalogItemVariationsTable)
+              .innerJoin(
+                  catalogItemsTable,
+                  eq(catalogItemVariationsTable.itemId, catalogItemsTable.id),
+              )
               .where(
                   eq(catalogItemVariationsTable.variationId, lineItem.itemId),
               )
@@ -162,8 +227,20 @@ async function catalogPricedLine(
     if (!row) {
         throw new InvalidOrderError(`Unknown variation ${lineItem.itemId}`);
     }
-    const catalogPrice = parseMoney(row.priceMoney);
-    if (row.pricingType !== "VARIABLE") return catalogPrice;
+    const { pricingType, priceMoney: catalogPrice } = resolveVariationPricing(
+        row,
+        row.locationOverrides as never,
+        locationId,
+    );
+    const name = [row.itemName, row.name].filter(Boolean).join(" - ") || null;
+    if (pricingType !== "VARIABLE") {
+        if (!catalogPrice) {
+            throw new InvalidOrderError(
+                `${lineItem.itemId} has no price and cannot be ordered`,
+            );
+        }
+        return { price: catalogPrice, name, fixed: true };
+    }
     if (!clientPrice?.amount || clientPrice.amount <= 0n) {
         throw new InvalidOrderError(
             `A positive price is required for ${lineItem.itemId}`,
@@ -177,7 +254,12 @@ async function catalogPricedLine(
             `Price currency must be ${catalogPrice.currency}`,
         );
     }
-    return clientPrice;
+    if (clientPrice.amount > MAX_UNIT_PRICE) {
+        throw new InvalidOrderError(
+            `Price for ${lineItem.itemId} is above the limit`,
+        );
+    }
+    return { price: clientPrice, name, fixed: false };
 }
 
 /**
@@ -195,8 +277,11 @@ async function createOrder(
 
     let totalAmount = 0n;
     let currency: CurrencyCode = "CAD";
+    let currencySeen = false;
+    const lineItems: Order["lineItems"] = [];
 
     for (const lineItem of order.lineItems) {
+        let stored = lineItem;
         const quantity = BigInt(lineItem.quantity ?? 1n);
         const clientPrice = lineItem.priceMoney
             ? parseMoney(lineItem.priceMoney)
@@ -204,7 +289,22 @@ async function createOrder(
         let unitPrice = clientPrice;
 
         if (options.catalogPricing) {
-            unitPrice = await catalogPricedLine(lineItem, clientPrice);
+            const priced = await catalogPricedLine(
+                lineItem,
+                clientPrice,
+                order.locationId,
+            );
+            unitPrice = priced.price;
+            // Store what is charged: the client's price and name are not
+            // trusted for a fixed-price line.
+            if (priced.fixed) {
+                stored = {
+                    ...lineItem,
+                    name: priced.name ?? lineItem.name,
+                    priceMoney: priced.price,
+                    pricingType: "FIXED",
+                };
+            }
         } else if (!unitPrice?.amount && lineItem.itemId) {
             // Staff till: a client price wins, the catalog fills a gap.
             const [variationRow] = await drizzleDB
@@ -217,7 +317,16 @@ async function createOrder(
             unitPrice = parseMoney(variationRow?.priceMoney);
         }
 
+        lineItems.push(stored);
         if (!unitPrice?.amount) continue;
+        if (options.catalogPricing && currencySeen) {
+            if (unitPrice.currency !== currency) {
+                throw new InvalidOrderError(
+                    "All lines must be in the same currency",
+                );
+            }
+        }
+        currencySeen = true;
         currency = unitPrice.currency ?? currency;
         totalAmount += unitPrice.amount * quantity;
     }
@@ -227,6 +336,7 @@ async function createOrder(
 
     return {
         ...order,
+        ...(options.catalogPricing ? { lineItems } : {}),
         id,
         referenceId: order.referenceId ?? id,
         state: "OPEN",
@@ -279,16 +389,20 @@ async function payCash(
     amountTendered: Money,
     orderAmount: Money,
 ): Promise<Money | null> {
-    if (!amountTendered.amount || !orderAmount.amount) return null;
+    if (amountTendered.amount == null || orderAmount.amount == null)
+        return null;
 
     const changeAmount = amountTendered.amount - orderAmount.amount;
     if (changeAmount < 0n) return null;
 
-    return drizzleDB.transaction(async (tx) => {
+    const change = await drizzleDB.transaction(async (tx) => {
         const row = await getOrderById(orderId, tx);
         if (!row) return null;
         if (row.state === "COMPLETED") {
             throw new OrderConflictError("Order is already paid");
+        }
+        if (row.state === "CANCELED") {
+            throw new OrderConflictError("Order is canceled");
         }
 
         const changeBackMoney: Money = {
@@ -335,6 +449,8 @@ async function payCash(
 
         return changeBackMoney;
     });
+    if (change) await warnIfOnlineCheckoutLive(orderId);
+    return change;
 }
 
 /**

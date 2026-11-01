@@ -114,12 +114,39 @@ describe("DEV_SEED", () => {
             assert.ok(lines.some((l) => l.level === "error"));
         });
 
+        it("refuses when NODE_ENV is unset or anything but development or test", async () => {
+            for (const nodeEnv of [undefined, "", "staging", "prod"]) {
+                const deps = untouchableDeps();
+                const { log, lines } = captureLog();
+                deps.log = log;
+                const outcome = await runDevSeed(
+                    { DEV_SEED: "true", NODE_ENV: nodeEnv },
+                    deps,
+                );
+                assert.equal(outcome, "refused", String(nodeEnv));
+                assert.deepEqual(deps.calls, []);
+                assert.ok(lines.some((l) => l.level === "error"));
+            }
+        });
+
+        it("runs when NODE_ENV is explicitly test", async () => {
+            const deps = untouchableDeps();
+            assert.notEqual(
+                await runDevSeed({ DEV_SEED: "true", NODE_ENV: "test" }, deps),
+                "refused",
+            );
+        });
+
         it("refuses when SETUP_TOKEN is set alongside DEV_SEED", async () => {
             const deps = untouchableDeps();
             const { log, lines } = captureLog();
             deps.log = log;
             const outcome = await runDevSeed(
-                { DEV_SEED: "true", SETUP_TOKEN: "something" },
+                {
+                    DEV_SEED: "true",
+                    NODE_ENV: "development",
+                    SETUP_TOKEN: "something",
+                },
                 deps,
             );
             assert.equal(outcome, "refused");
@@ -132,7 +159,11 @@ describe("DEV_SEED", () => {
             const { log, lines } = captureLog();
             deps.log = log;
             const outcome = await runDevSeed(
-                { DEV_SEED: "true", PUBLIC_URL: "https://shop.example.test" },
+                {
+                    DEV_SEED: "true",
+                    NODE_ENV: "development",
+                    PUBLIC_URL: "https://shop.example.test",
+                },
                 deps,
             );
             assert.equal(outcome, "refused");
@@ -145,7 +176,12 @@ describe("DEV_SEED", () => {
             deps.hasUsers = async () => true;
             assert.equal(
                 await runDevSeed(
-                    { DEV_SEED: "true", SETUP_TOKEN: "  ", PUBLIC_URL: "" },
+                    {
+                        DEV_SEED: "true",
+                        NODE_ENV: "development",
+                        SETUP_TOKEN: "  ",
+                        PUBLIC_URL: "",
+                    },
                     deps,
                 ),
                 "skipped",
@@ -156,7 +192,10 @@ describe("DEV_SEED", () => {
             const deps = untouchableDeps();
             deps.hasUsers = async () => true;
             assert.equal(
-                await runDevSeed({ DEV_SEED: "true" }, deps),
+                await runDevSeed(
+                    { DEV_SEED: "true", NODE_ENV: "development" },
+                    deps,
+                ),
                 "skipped",
             );
             assert.deepEqual(deps.calls, []);
@@ -170,7 +209,10 @@ describe("DEV_SEED", () => {
                 throw new Error("boom");
             };
             assert.equal(
-                await runDevSeed({ DEV_SEED: "true" }, deps),
+                await runDevSeed(
+                    { DEV_SEED: "true", NODE_ENV: "development" },
+                    deps,
+                ),
                 "failed",
             );
             assert.ok(lines.some((l) => l.level === "error"));
@@ -182,7 +224,7 @@ describe("DEV_SEED", () => {
         it("seeds the owner, store, till, provider and setup state", async () => {
             const { log, lines } = captureLog();
             const outcome = await runDevSeed(
-                { DEV_SEED: "true" },
+                { DEV_SEED: "true", NODE_ENV: "development" },
                 { ...devSeedDeps, log },
             );
             assert.equal(outcome, "seeded");
@@ -291,7 +333,7 @@ describe("DEV_SEED", () => {
                 categories: 4,
             });
             const outcome = await runDevSeed(
-                { DEV_SEED: "true" },
+                { DEV_SEED: "true", NODE_ENV: "development" },
                 { ...devSeedDeps, log: captureLog().log },
             );
             assert.equal(outcome, "skipped");

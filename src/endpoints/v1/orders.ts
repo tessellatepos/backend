@@ -113,6 +113,54 @@ function refuseOrderAccess(
     return true;
 }
 
+/**
+ * Reads an integer sent as a JSON number or a digit string (the gateway
+ * hands over bigints already).
+ * @param value the raw value
+ * @returns the integer, or null when it is anything else
+ */
+function wholeNumber(value: unknown): bigint | null {
+    if (typeof value === "bigint") return value;
+    if (typeof value === "number") {
+        return Number.isSafeInteger(value) ? BigInt(value) : null;
+    }
+    if (typeof value === "string" && /^-?\d{1,18}$/.test(value.trim())) {
+        return BigInt(value.trim());
+    }
+    return null;
+}
+
+/**
+ * Checks what the create route would otherwise turn into a 500: a quantity
+ * that is not a positive whole number, or a price that is not whole minor units.
+ * @param lineItems the request's line items
+ * @returns a message for the first problem, or null
+ */
+function invalidLineItem(lineItems: unknown[]): string | null {
+    for (const [i, raw] of lineItems.entries()) {
+        const line = (raw ?? {}) as {
+            quantity?: unknown;
+            priceMoney?: { amount?: unknown } | null;
+        };
+        if (typeof raw !== "object" || raw === null) {
+            return `lineItems[${i}] must be an object`;
+        }
+        if (line.quantity !== undefined && line.quantity !== null) {
+            const q = wholeNumber(line.quantity);
+            if (q === null || q < 1n) {
+                return `lineItems[${i}].quantity must be a positive whole number`;
+            }
+        }
+        const amount = line.priceMoney?.amount;
+        if (amount !== undefined && amount !== null) {
+            if (wholeNumber(amount) === null) {
+                return `lineItems[${i}].priceMoney.amount must be a whole number of minor units`;
+            }
+        }
+    }
+    return null;
+}
+
 export const ordersv1Endpoint: ITessellateApiRouter = {
     route_path: "/orders",
     version: "v1",
@@ -556,6 +604,12 @@ orderRouter.post(
                 return;
             }
 
+            const lineProblem = invalidLineItem(orderDetails.lineItems);
+            if (lineProblem) {
+                res.status(400).json({ message: lineProblem });
+                return;
+            }
+
             // Only what is sold online can be ordered through a credential.
             // Totals come from the catalog, so a staff-only item must not be
             // reachable by guessing its variation id.
@@ -876,6 +930,14 @@ orderRouter.post(
                 res.status(400).json({ message: "Missing amountTendered" });
                 return;
             }
+            const tendered = wholeNumber(amountTendered);
+            if (tendered === null || tendered < 0n) {
+                res.status(400).json({
+                    message:
+                        "amountTendered must be a whole number of minor units",
+                });
+                return;
+            }
 
             const order = await provider.fetchOrder(orderId);
             if (!order || !order.totalMoney) {
@@ -897,7 +959,7 @@ orderRouter.post(
             }
 
             const tenderedMoney: Money = {
-                amount: BigInt(amountTendered),
+                amount: tendered,
                 currency: order.totalMoney.currency,
             };
 

@@ -1,7 +1,8 @@
 /**
  * Cancels online orders nobody paid for. Only orders created through a
  * gateway credential are candidates, never staff orders; an order with a live
- * invoice or a paid online attempt is skipped. Safe to run twice or on several
+ * invoice, a live hosted checkout (until it expires) or a paid online attempt
+ * is skipped. Safe to run twice or on several
  * instances: a per-order Redis lock avoids duplicate provider calls, and the
  * provider's cancel is atomic, so the cancel event fires once per order.
  */
@@ -13,6 +14,8 @@ import { events } from "@tessellatepos/plugin-sdk/server";
 import { drizzleDB } from "@/services/db/postgres";
 import { onlinePaymentsTable, ordersTable } from "@/services/db/schema";
 import { openUnpaidOrder } from "@/services/db/orders";
+import { listLiveCheckouts } from "@/services/db/onlinePayments";
+import { withRedisLock } from "@/gateway/createGuard";
 import { getActiveProvider } from "@/services/providers";
 import { getRedisClient } from "@/services/redis";
 import { orderExpiryMs } from "@/gateway/lifecycleConfig";
@@ -81,6 +84,9 @@ export async function expireStaleOrders(
                         openUnpaidOrder,
                         lt(ordersTable.createdAt, cutoff),
                         sql`not exists (select 1 from ${onlinePaymentsTable} where ${onlinePaymentsTable.order_reference} = ${ordersTable.referenceId} and ${onlinePaymentsTable.status} = 'paid')`,
+                        // A shopper may still be paying on the processor's page:
+                        // wait until that checkout expires, then cancel as usual.
+                        sql`not exists (select 1 from ${onlinePaymentsTable} where ${onlinePaymentsTable.order_reference} = ${ordersTable.referenceId} and ${onlinePaymentsTable.kind} = 'checkout' and ${onlinePaymentsTable.status} = 'created' and (${onlinePaymentsTable.expires_at} is null or ${onlinePaymentsTable.expires_at} > ${now()}))`,
                         after ? gt(ordersTable.referenceId, after) : undefined,
                     ),
                 )
@@ -97,9 +103,20 @@ export async function expireStaleOrders(
                 });
                 if (!won) continue;
                 try {
-                    const order = await provider.cancelOrder(
-                        row.id ?? row.referenceId,
+                    // Same lock startCheckout and a manual cancel take, and a
+                    // fresh look at the attempts: one may have started since
+                    // the page was read.
+                    const locked = await withRedisLock(
+                        `gw:checkout-lock:${row.referenceId}`,
+                        async () =>
+                            (await listLiveCheckouts(row.referenceId, now()))
+                                .length > 0
+                                ? null
+                                : provider.cancelOrder(
+                                      row.id ?? row.referenceId,
+                                  ),
                     );
+                    const order = locked?.value;
                     if (order) {
                         canceled++;
                         options.registry.emit(

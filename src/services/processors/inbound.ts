@@ -1,15 +1,11 @@
 import { Logger } from "tslog";
 import type { Request, Response } from "express";
 import { parseMoney } from "@tessellatepos/sdk";
-import type {
-    InvoiceStatus,
-    OnlinePaymentStatus,
-    ProcessorEvent,
-} from "@tessellatepos/sdk";
+import type { InvoiceStatus, ProcessorEvent } from "@tessellatepos/sdk";
 import { getRedisClient } from "@/services/redis";
 import {
     findOnlinePayment,
-    setOnlinePaymentStatus,
+    applyCheckoutStatus,
 } from "@/services/db/onlinePayments";
 import { onlinePaymentsAvailable, webhookUrl } from "@/config/urls";
 import type { TessellatePluginRegistry } from "@/utils/registry/plugin/pluginRegistry";
@@ -103,20 +99,27 @@ export async function applyProcessorEvents(
                 await markSeen(processorId, event.id);
                 continue;
             }
-            if (result.outcome === "canceled") {
-                logger.warn(
-                    `Order ${attempt.order_reference} was paid after it was canceled; needs a refund`,
+            // Money arrived for an order that can no longer take it. The
+            // event is still recorded below; this makes it visible.
+            const late =
+                result.outcome === "canceled" ||
+                (result.outcome === "already_completed" &&
+                    attempt.status !== "paid" &&
+                    !(
+                        event.payment_id &&
+                        result.transactionIds.includes(event.payment_id)
+                    ));
+            if (late) {
+                const paid = event.amount ?? parseMoney(attempt.amount);
+                logger.error(
+                    `late payment, needs refund: order ${attempt.order_reference} was already ${result.outcome === "canceled" ? "canceled" : "completed"} when ${processorId} reported ${paid?.amount ?? "?"} ${paid?.currency ?? ""} paid (attempt ${attempt.id}, event ${event.id})`,
                 );
             }
         }
 
-        const next: OnlinePaymentStatus = event.status;
-        // A paid attempt only moves on to refunded, so a late "expired" or
-        // "failed" from an out-of-order event cannot undo it.
-        const keep =
-            attempt.status === next ||
-            (attempt.status === "paid" && next !== "refunded");
-        if (!keep) await setOnlinePaymentStatus(attempt.id, next);
+        // Out-of-order events cannot undo a paid or refunded attempt; the
+        // rules and the row lock are in applyCheckoutStatus.
+        await applyCheckoutStatus(attempt.id, event.status);
         await markSeen(processorId, event.id);
     }
 }

@@ -21,6 +21,7 @@ import {
     listCredentialRows,
     getCredentialRow,
 } from "@/services/db/credentials";
+import { getOrderByAnyId } from "@/services/db/orders";
 import { getWebhookSecret } from "@/services/credentials";
 import { WEBHOOK_EVENTS } from "@/gateway/webhooks/events";
 import { SIGNATURE_HEADER, signWebhook } from "@/gateway/webhooks/sign";
@@ -68,7 +69,8 @@ export function eventBody(type: string, data: unknown, now: Date): string {
 }
 
 /**
- * Fans a host event out to the credentials that subscribe to it.
+ * Fans a host event out to the credentials that subscribe to it. Order and
+ * invoice events go only to the credential that created the order.
  * @param name the host event name, e.g. "orderCreated"
  * @param args the event's arguments
  * @param now the event time
@@ -81,6 +83,17 @@ export async function queueEvent(
 ): Promise<number> {
     const spec = WEBHOOK_EVENTS[name];
     if (!spec) return 0;
+    // An order's events go to the credential that created it, not to every
+    // credential that could read orders at the location.
+    let owner: string | undefined;
+    if (spec.orderRef) {
+        const ref = spec.orderRef(args);
+        const created = ref
+            ? (await getOrderByAnyId(ref))?.createdByCredential
+            : null;
+        if (!created) return 0;
+        owner = created;
+    }
     const built = spec.toData(args);
     if (!built) {
         logger.warn(
@@ -92,6 +105,7 @@ export async function queueEvent(
     const rows = (await listCredentialRows())
         .filter(
             (c) =>
+                (owner === undefined || c.id === owner) &&
                 c.webhook_url !== null &&
                 c.revoked_at === null &&
                 (c.expires_at === null ||

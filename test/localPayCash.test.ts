@@ -125,4 +125,60 @@ describe("cash payment on a LOCAL till", () => {
         assert.equal(row?.state, "COMPLETED");
         assert.equal(row?.tenders?.length, 1);
     });
+
+    it("answers 400, not 500, for an amountTendered that is not whole minor units", async () => {
+        const id = await createOrder();
+        for (const bad of ["abc", "12.5", 12.5, "", {}, [], "-1", "1e3"]) {
+            const res = await call("POST", `/orders/${id}/pay-cash`, {
+                amountTendered: bad,
+            });
+            assert.equal(res.status, 400, JSON.stringify(bad));
+            assert.match(res.body.message, /whole number/);
+        }
+        assert.equal((await getOrderById(id))?.state, "OPEN");
+        assert.equal((await payCash(id)).status, 200);
+    });
+
+    it("answers 400 for a staff line with a bad quantity or price, and accepts the shapes the till sends", async () => {
+        const line = (extra: Record<string, unknown>) => ({
+            ...order,
+            lineItems: [{ ...order.lineItems[0], ...extra }],
+        });
+        for (const extra of [
+            { quantity: 1.5 },
+            { quantity: "1.5" },
+            { quantity: -1 },
+            { quantity: "0" },
+            { quantity: "abc" },
+            { quantity: {} },
+            { priceMoney: { amount: "3.5", currency: "CAD" } },
+            { priceMoney: { amount: "abc", currency: "CAD" } },
+        ]) {
+            const res = await call("POST", "/orders/create", line(extra));
+            assert.equal(res.status, 400, JSON.stringify(extra));
+        }
+        for (const extra of [{ quantity: "3" }, { quantity: 3 }, {}]) {
+            const res = await call("POST", "/orders/create", line(extra));
+            assert.equal(res.status, 200, JSON.stringify(extra));
+        }
+    });
+
+    it("completes a zero-total order with no change due", async () => {
+        const free = {
+            ...order,
+            lineItems: [
+                {
+                    ...order.lineItems[0],
+                    priceMoney: { amount: "0", currency: "CAD" },
+                },
+            ],
+        };
+        const id = (await call("POST", "/orders/create", free)).body.id;
+        const res = await call("POST", `/orders/${id}/pay-cash`, {
+            amountTendered: "0",
+        });
+        assert.equal(res.status, 200, JSON.stringify(res.body));
+        assert.equal(res.body.order.state, "COMPLETED");
+        assert.equal(res.body.changeDue.amount, "0");
+    });
 });

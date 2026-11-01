@@ -1,4 +1,4 @@
-import { getAuth } from "@/services/auth";
+import { CLIENT_IP_HEADER, getAuth } from "@/services/auth";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 import { toNodeHandler } from "better-auth/node";
 import express from "express";
@@ -29,6 +29,40 @@ const exchangeFailures = new FixedWindowLimiter(
 /** Clears the device-token failure counts (tests). */
 export function resetDeviceTokenLimits(): void {
     exchangeFailures.reset();
+}
+
+/** Failed password sign-ins one account may see per window, from anywhere. */
+export const SIGN_IN_MAX_FAILURES = 10;
+/** Length of the failed sign-in window. */
+export const SIGN_IN_WINDOW_MS = 15 * 60 * 1000;
+
+// Per process. Counts failures per username/email regardless of client IP, so
+// rotating addresses (the per-IP limit) cannot grind one account's password.
+// Cost: someone who knows a username can lock it out for a window.
+const signInFailures = new FixedWindowLimiter(
+    SIGN_IN_MAX_FAILURES,
+    SIGN_IN_WINDOW_MS,
+);
+
+/** Clears the per-account sign-in failure counts (tests). */
+export function resetSignInLimits(): void {
+    signInFailures.reset();
+}
+
+/** The account a password sign-in names, normalised, or null. */
+function signInIdentifier(req: express.Request): string | null {
+    if (
+        req.method !== "POST" ||
+        !/\/sign-in\/(username|email)$/.test(req.path)
+    ) {
+        return null;
+    }
+    const body = req.body as
+        { username?: unknown; email?: unknown } | undefined;
+    const id = req.path.endsWith("/username") ? body?.username : body?.email;
+    return typeof id === "string" && id
+        ? id.trim().toLowerCase().slice(0, 256)
+        : null;
 }
 
 const authRouter: Router = express.Router();
@@ -102,5 +136,23 @@ authRouter.delete(
 // Resolve the instance per request: it is built after plugins load and may be
 // rebuilt later.
 authRouter.all("/*splat", (req, res, next) => {
+    // Always overwrite: whatever the client sent under this name is ignored.
+    req.headers[CLIENT_IP_HEADER] = clientKey(req);
+    const account = signInIdentifier(req);
+    if (account) {
+        if (signInFailures.isLimited(account)) {
+            res.setHeader(
+                "Retry-After",
+                signInFailures.retryAfterSeconds(account),
+            );
+            res.status(429).json({ message: "Too many failed attempts" });
+            return;
+        }
+        res.on("finish", () => {
+            if (res.statusCode >= 400 && res.statusCode !== 429) {
+                signInFailures.record(account);
+            }
+        });
+    }
     void toNodeHandler(getAuth())(req, res).catch(next);
 });

@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { assertPublicTarget, isBlockedAddress } from "@/gateway/webhooks/ssrf";
 import {
@@ -89,5 +89,90 @@ describe("webhook SSRF guard", () => {
         assert.ok(validateWebhookUrl("https://example.test/hook"));
         assert.ok(validateWebhookUrl("http://localhost:3000/hook"));
         assert.ok(validateWebhookUrl("http://127.0.0.1:3000/hook"));
+    });
+
+    it("blocks IPv4-embedded IPv6 literals in dotted and hex forms", () => {
+        for (const ip of [
+            "::ffff:127.0.0.1",
+            "::ffff:7f00:1",
+            "::ffff:a9fe:a9fe", // 169.254.169.254
+            "::ffff:0:0",
+            "0:0:0:0:0:ffff:7f00:1",
+            "::7f00:1",
+            "::127.0.0.1",
+            "::a9fe:a9fe",
+            "::",
+            "64:ff9b::7f00:1",
+            "64:ff9b::808:808", // NAT64 is refused outright
+            "2002:7f00:1::",
+            "2002:808:808::", // 6to4 is refused outright
+        ]) {
+            assert.equal(isBlockedAddress(ip), true, ip);
+        }
+        for (const ip of ["::ffff:5db8:d822", "::ffff:93.184.216.34"]) {
+            assert.equal(isBlockedAddress(ip), false, ip);
+        }
+    });
+
+    it("refuses URL forms that normalise to a mapped loopback or metadata host", async () => {
+        for (const url of [
+            "https://[::ffff:127.0.0.1]/",
+            "https://[::ffff:169.254.169.254]/",
+            "https://[::7f00:1]/",
+            "https://[::ffff:a9fe:a9fe]/",
+        ]) {
+            assert.throws(
+                () => validateWebhookUrl(url),
+                CredentialValidationError,
+                url,
+            );
+            await assert.rejects(
+                assertPublicTarget(url, to("93.184.216.34")),
+                url,
+            );
+        }
+    });
+});
+
+describe("webhook loopback exception by NODE_ENV", () => {
+    const original = process.env.NODE_ENV;
+    afterEach(() => {
+        if (original === undefined) delete process.env.NODE_ENV;
+        else process.env.NODE_ENV = original;
+    });
+    const boom = async () => {
+        throw new Error("should not resolve");
+    };
+
+    it("accepts http loopback outside production, at save and delivery", async () => {
+        process.env.NODE_ENV = "development";
+        for (const url of [
+            "http://localhost:3000/hook",
+            "http://127.0.0.1:3000/hook",
+            "http://[::1]:3000/hook",
+        ]) {
+            assert.ok(validateWebhookUrl(url), url);
+            await assertPublicTarget(url, boom);
+        }
+    });
+
+    it("requires https and a public address in production", async () => {
+        process.env.NODE_ENV = "production";
+        for (const url of [
+            "http://localhost:3000/hook",
+            "http://127.0.0.1:3000/hook",
+            "http://[::1]:3000/hook",
+            "https://127.0.0.1/hook",
+            "https://[::1]/hook",
+        ]) {
+            assert.throws(
+                () => validateWebhookUrl(url),
+                CredentialValidationError,
+                url,
+            );
+            await assert.rejects(assertPublicTarget(url, to("127.0.0.1")), url);
+        }
+        assert.ok(validateWebhookUrl("https://example.test/hook"));
+        await assertPublicTarget("https://example.test/", to("93.184.216.34"));
     });
 });

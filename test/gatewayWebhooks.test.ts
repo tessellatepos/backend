@@ -14,8 +14,10 @@ import {
     queueEvent,
     replayDelivery,
 } from "@/gateway/webhooks/dispatch";
+import { WEBHOOK_EVENTS } from "@/gateway/webhooks/events";
 import { signWebhook } from "@/gateway/webhooks/sign";
 import { getDelivery, listDeliveries } from "@/services/db/webhookDeliveries";
+import { insertOrder } from "@/services/db/orders";
 import { migrateTestDb } from "./helpers/db";
 
 after(async () => {
@@ -84,6 +86,12 @@ describe("gateway outbound webhooks", () => {
                 [id],
             );
         }
+        for (const ref of orderRefs) {
+            await pool.query(
+                `DELETE FROM "tessellate-orders" WHERE reference_id = $1`,
+                [ref],
+            );
+        }
         await removeLocation(locA);
         await removeLocation(locB);
     });
@@ -103,12 +111,24 @@ describe("gateway outbound webhooks", () => {
         return result;
     }
 
-    const order = (locationId: string) => ({
-        id: `ord-${randomUUID().slice(0, 6)}`,
-        locationId,
-        state: "OPEN",
-        lineItems: [],
-    });
+    const orderRefs: string[] = [];
+    /** An order stored as created by `credentialId` (none: a staff order). */
+    async function order(locationId: string, credentialId?: string) {
+        const ref = `ord-${randomUUID().slice(0, 6)}`;
+        orderRefs.push(ref);
+        await insertOrder(
+            { referenceId: ref, locationId, state: "OPEN", lineItems: [] },
+            undefined,
+            credentialId,
+        );
+        return {
+            id: ref,
+            referenceId: ref,
+            locationId,
+            state: "OPEN",
+            lineItems: [],
+        };
+    }
 
     it("signs as t=<ts>,v1=hmac(secret, ts.body)", () => {
         const header = signWebhook("whsec_x", 1700000000, '{"a":1}');
@@ -130,8 +150,10 @@ describe("gateway outbound webhooks", () => {
         const otherScope = await make({ scopes: ["catalog:read"] });
         const otherLocation = await make({ location_ids: [locB] });
         const noUrl = await make({ webhook_url: undefined });
-        const queued = await queueEvent("orderCreated", [order(locA)]);
-        assert.ok(queued >= 1);
+        const queued = await queueEvent("orderCreated", [
+            await order(locA, match.client_id),
+        ]);
+        assert.equal(queued, 1);
         assert.equal((await listDeliveries(match.client_id, 10)).length, 1);
         for (const other of [otherScope, otherLocation, noUrl]) {
             assert.equal((await listDeliveries(other.client_id, 10)).length, 0);
@@ -140,14 +162,17 @@ describe("gateway outbound webhooks", () => {
 
     it("ignores events it does not forward and malformed data", async () => {
         const c = await make();
-        assert.equal(await queueEvent("somethingElse", [order(locA)]), 0);
+        assert.equal(
+            await queueEvent("somethingElse", [await order(locA, c.client_id)]),
+            0,
+        );
         assert.equal(await queueEvent("orderCreated", ["not an order"]), 0);
         assert.equal((await listDeliveries(c.client_id, 10)).length, 0);
     });
 
     it("delivers a signed body the receiver can verify, and tampering fails", async () => {
         const c = await make();
-        await queueEvent("paymentCompleted", [order(locA)]);
+        await queueEvent("paymentCompleted", [await order(locA, c.client_id)]);
         received.length = 0;
         status = 200;
         await deliverDue({ limit: 100 });
@@ -177,7 +202,7 @@ describe("gateway outbound webhooks", () => {
 
     it("retries a 500 with backoff and fails after the last attempt", async () => {
         const c = await make();
-        await queueEvent("orderCancelled", [order(locA)]);
+        await queueEvent("orderCancelled", [await order(locA, c.client_id)]);
         status = 500;
         const t0 = new Date();
         await deliverDue({ now: t0, limit: 100 });
@@ -204,7 +229,7 @@ describe("gateway outbound webhooks", () => {
 
     it("replays a delivery as a new row with the same event id and body", async () => {
         const c = await make();
-        await queueEvent("orderCreated", [order(locA)]);
+        await queueEvent("orderCreated", [await order(locA, c.client_id)]);
         const [original] = await listDeliveries(c.client_id, 1);
         const copy = await replayDelivery(c.client_id, original.id);
         assert.ok(copy);
@@ -217,7 +242,7 @@ describe("gateway outbound webhooks", () => {
 
     it("refuses to deliver to a host that resolves to a private address", async () => {
         const c = await make({ webhook_url: "https://hooks.example.test/in" });
-        await queueEvent("orderCreated", [order(locA)]);
+        await queueEvent("orderCreated", [await order(locA, c.client_id)]);
         let fetched = 0;
         // Other tests leave loopback deliveries pending; count only ours.
         const fetchImpl = (async (target: string) => {
@@ -238,7 +263,7 @@ describe("gateway outbound webhooks", () => {
 
     it("delivers to a host that resolves to a public address, without following redirects", async () => {
         const c = await make({ webhook_url: "https://hooks.example.test/in" });
-        await queueEvent("orderCreated", [order(locA)]);
+        await queueEvent("orderCreated", [await order(locA, c.client_id)]);
         let init: RequestInit | undefined;
         const fetchImpl = (async (_u: unknown, i: RequestInit) => {
             init = i;
@@ -254,5 +279,105 @@ describe("gateway outbound webhooks", () => {
         const [row] = await listDeliveries(c.client_id, 1);
         assert.equal(row.last_status_code, 302);
         assert.equal(row.status, "pending", "a redirect is a failed attempt");
+    });
+
+    it("sends an order's events only to the credential that created it", async () => {
+        const owner = await make();
+        const other = await make();
+        const mine = await order(locA, owner.client_id);
+        assert.equal(await queueEvent("orderCreated", [mine]), 1);
+        assert.equal(await queueEvent("paymentCompleted", [mine]), 1);
+        assert.equal((await listDeliveries(owner.client_id, 10)).length, 2);
+        assert.equal((await listDeliveries(other.client_id, 10)).length, 0);
+    });
+
+    it("sends a staff order's events to no credential", async () => {
+        const c = await make();
+        const staff = await order(locA);
+        assert.equal(await queueEvent("orderCreated", [staff]), 0);
+        assert.equal(await queueEvent("orderCancelled", [staff]), 0);
+        assert.equal(
+            await queueEvent("orderCreated", [
+                { ...staff, referenceId: "gone", id: "gone" },
+            ]),
+            0,
+        );
+        assert.equal((await listDeliveries(c.client_id, 10)).length, 0);
+    });
+
+    it("sends an invoice's events only to the credential that created its order", async () => {
+        const owner = await make();
+        const other = await make();
+        const mine = await order(locA, owner.client_id);
+        const invoice = {
+            id: "inv-1",
+            order_reference: mine.referenceId,
+            processor_id: "stripe",
+            status: "sent",
+            amount: { amount: "100", currency: "CAD" },
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+        };
+        assert.equal(await queueEvent("invoiceSent", [invoice, mine]), 1);
+        assert.equal((await listDeliveries(owner.client_id, 10)).length, 1);
+        assert.equal((await listDeliveries(other.client_id, 10)).length, 0);
+    });
+
+    it("still sends customer and catalog events to every subscriber", async () => {
+        const a = await make({ scopes: ["catalog:read"] });
+        const b = await make({ scopes: ["catalog:read"] });
+        assert.ok((await queueEvent("catalogSynced", [])) >= 2);
+        assert.equal((await listDeliveries(a.client_id, 10)).length, 1);
+        assert.equal((await listDeliveries(b.client_id, 10)).length, 1);
+    });
+
+    it("accepts the order shapes a staff till sends, and still refuses nonsense", () => {
+        const base = {
+            referenceId: "r1",
+            id: "r1",
+            locationId: "L1",
+            state: "OPEN",
+            discounts: [],
+            totalMoney: { amount: 700n, currency: "CAD" },
+        };
+        const toData = (line: unknown) =>
+            WEBHOOK_EVENTS.orderCreated.toData([
+                { ...base, lineItems: [line] },
+            ]);
+        const lines = [
+            // what the storefront sends: bigints as strings
+            {
+                name: "Tea",
+                quantity: "2",
+                priceMoney: { amount: "350", currency: "CAD" },
+                pricingType: "FIXED",
+            },
+            // numbers and nulls from other tills
+            {
+                name: "Tea",
+                quantity: 2,
+                priceMoney: { amount: 350, currency: "CAD" },
+            },
+            { name: "Tea", quantity: 2n, priceMoney: null, pricingType: null },
+        ];
+        for (const line of lines)
+            assert.ok(toData(line), String(lines.indexOf(line)));
+        const data = toData(lines[1])?.data as {
+            lineItems: { quantity: string; priceMoney: { amount: string } }[];
+        };
+        assert.equal(data.lineItems[0].quantity, "2");
+        assert.equal(data.lineItems[0].priceMoney.amount, "350");
+        for (const bad of [
+            { quantity: 1.5 },
+            { quantity: "two" },
+            { priceMoney: { amount: 3.5, currency: "CAD" } },
+            { pricingType: "SOMETIMES" },
+        ]) {
+            assert.equal(
+                toData({ name: "Tea", ...bad }),
+                null,
+                JSON.stringify(bad),
+            );
+        }
     });
 });
