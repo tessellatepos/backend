@@ -13,6 +13,7 @@ const none: PluginPermissionProvider = {
     order: false,
     customer: false,
     auth: false,
+    payment: false,
 };
 
 describe("plugin server context customer access", () => {
@@ -31,6 +32,7 @@ describe("plugin server context customer access", () => {
             ...none,
             customer: true,
             auth: false,
+            payment: false,
         });
         assert.equal(await ctx.getCustomer("does-not-exist"), null);
         const page = await ctx.findCustomers({ limit: 1 });

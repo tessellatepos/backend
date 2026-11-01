@@ -13,6 +13,7 @@ import { authenticate } from "@/middleware/authenticate";
 import { installGatewayPrincipals } from "@/gateway/principal";
 import { buildGatewayRegistry } from "@/gateway/registry";
 import { populateGatewayRouter } from "@/gateway/router";
+import { processorWebhookHandler } from "@/services/processors/inbound";
 
 /**
  * Builds the Express app with the middleware every request goes through and
@@ -28,6 +29,15 @@ export function createApp(): Express {
     app.use(hostGuard());
     app.use(surfaceMiddleware);
     app.use(surfaceCors());
+    // Inbound payment webhooks are signed over the exact bytes, so this route
+    // takes the raw body and is mounted before express.json() and
+    // authenticate. It is public by design; the processor's signature check
+    // is the only way in.
+    app.post(
+        "/webhooks/:processorId",
+        express.raw({ type: () => true, limit: "256kb" }),
+        processorWebhookHandler(),
+    );
     app.use(express.json());
     // Resolves req.principal; guards (requireScope) decide what to reject.
     app.use(authenticate);

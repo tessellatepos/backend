@@ -3,6 +3,7 @@ import { isNull } from "drizzle-orm";
 import {
     CATALOG_CSV_COLUMNS,
     CURRENCIES,
+    SALES_CHANNELS,
     convertCentsToDollars,
     convertDollarsToCents,
 } from "@tessellatepos/sdk";
@@ -13,6 +14,7 @@ import type {
     CatalogImportRowResult,
     CurrencyCode,
     Item,
+    SalesChannel,
 } from "@tessellatepos/sdk";
 import { drizzleDB } from "@/services/db/postgres";
 import {
@@ -58,6 +60,8 @@ interface ParsedRow {
     locationIds: string[] | undefined;
     taxable: boolean | undefined;
     archived: boolean | undefined;
+    channels: SalesChannel[] | undefined;
+    variationChannels: SalesChannel[] | undefined;
 }
 
 interface CategoryRow {
@@ -107,6 +111,20 @@ function textError(
     if (value.length > max) return "too long";
     if (CONTROL.test(value)) return "has control characters";
     return null;
+}
+
+/** Reads a `; `-separated channel list; blank is undefined, a bad one null. */
+function readChannelList(value: string): SalesChannel[] | undefined | null {
+    if (!value.trim()) return undefined;
+    const parts = value
+        .split(";")
+        .map((part) => part.trim().toLowerCase())
+        .filter(Boolean);
+    const known = parts.every((p) =>
+        SALES_CHANNELS.includes(p as SalesChannel),
+    );
+    if (!known || parts.length === 0) return null;
+    return [...new Set(parts)] as SalesChannel[];
 }
 
 /** Splits a header row into column indexes, or the errors it has. */
@@ -345,6 +363,19 @@ function planImport(csv: string, snapshot: Snapshot, ctx: WriteContext): Plan {
         if (archived === "invalid")
             errors.push({ path: "archived", message: "must be true or false" });
 
+        const channels = readChannelList(cell("channels"));
+        const variationChannels = readChannelList(cell("variation channels"));
+        if (channels === null)
+            errors.push({
+                path: "channels",
+                message: `must list ${SALES_CHANNELS.join(" or ")}`,
+            });
+        if (variationChannels === null)
+            errors.push({
+                path: "variation channels",
+                message: `must list ${SALES_CHANNELS.join(" or ")}`,
+            });
+
         results.push({
             line,
             status: errors.length ? "error" : "update",
@@ -363,6 +394,8 @@ function planImport(csv: string, snapshot: Snapshot, ctx: WriteContext): Plan {
                 locationIds,
                 taxable: taxable === "invalid" ? undefined : taxable,
                 archived: archived === "invalid" ? undefined : archived,
+                channels: channels ?? undefined,
+                variationChannels: variationChannels ?? undefined,
             });
         }
     }
@@ -493,6 +526,7 @@ function planImport(csv: string, snapshot: Snapshot, ctx: WriteContext): Plan {
         const locationIds = pick("locations", (r) => r.locationIds);
         const taxable = pick("taxable", (r) => r.taxable);
         const archived = pick("archived", (r) => r.archived);
+        const channels = pick("channels", (r) => r.channels);
 
         const draft: ItemDraft = existing
             ? toDraft(existing)
@@ -503,6 +537,7 @@ function planImport(csv: string, snapshot: Snapshot, ctx: WriteContext): Plan {
                   isTaxable: true,
                   isArchived: false,
                   image: null,
+                  channels: ["pos"],
                   categoryIds: [],
                   locationIds: [],
                   variations: [],
@@ -522,6 +557,7 @@ function planImport(csv: string, snapshot: Snapshot, ctx: WriteContext): Plan {
         }
         if (taxable !== undefined) draft.isTaxable = taxable;
         if (archived !== undefined) draft.isArchived = archived;
+        if (channels !== undefined) draft.channels = channels;
 
         const touched = new Set<string>();
         for (const row of rows) {
@@ -567,6 +603,7 @@ function planImport(csv: string, snapshot: Snapshot, ctx: WriteContext): Plan {
             if (row.variationName) target.name = row.variationName;
             if (row.sku) target.sku = row.sku;
             if (row.upc) target.upc = row.upc;
+            if (row.variationChannels) target.channels = row.variationChannels;
             if (row.price !== null && row.currency) {
                 target.pricingType = "FIXED";
                 target.priceMoney = {
@@ -745,6 +782,8 @@ export function exportCatalogCsv(items: Item[]): string {
                 (item.locationIds ?? []).join("; "),
                 String(item.isTaxable ?? true),
                 String(item.isArchived ?? false),
+                (item.channels ?? ["pos"]).join("; "),
+                (v.channels ?? []).join("; "),
             ]);
         }
     }

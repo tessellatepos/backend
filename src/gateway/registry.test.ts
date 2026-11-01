@@ -211,6 +211,7 @@ describe("plugin gateway declarations", () => {
         order: false,
         customer: false,
         auth: false,
+        payment: false,
     };
 
     it("builds the public path from the plugin name and route", () => {

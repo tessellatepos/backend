@@ -12,6 +12,7 @@ import { customersv1Endpoint } from "@/endpoints/v1/customers";
 import { itemsv1Endpoint } from "@/endpoints/v1/items";
 import { locationsv1Endpoint } from "@/endpoints/v1/locations";
 import { ordersv1Endpoint } from "@/endpoints/v1/orders";
+import { paymentsv1Endpoint } from "@/endpoints/v1/payments";
 import { pluginsv1Endpoint } from "@/endpoints/v1/plugins";
 import { squarev1Endpoint } from "@/endpoints/v1/square";
 import { setupv1Endpoint } from "@/endpoints/v1/setup";
@@ -41,6 +42,7 @@ export const routes: ITessellateApiRouter[] = [
     itemsv1Endpoint,
     locationsv1Endpoint,
     ordersv1Endpoint,
+    paymentsv1Endpoint,
     pluginsv1Endpoint,
     squarev1Endpoint,
     setupv1Endpoint,

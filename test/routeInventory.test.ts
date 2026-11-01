@@ -48,6 +48,10 @@ const PUBLIC = [
     // the gateway API description is public, read-only and rate limited
     "GET /gateway/v1/openapi.json",
     "GET /gateway/v1/docs",
+    // payment processors call back here with no session or credential; the
+    // processor's signature over the raw body is the authentication (an
+    // unsigned or tampered request gets 401, see processorWebhooks.test.ts)
+    "POST /webhooks/:processorId",
 ];
 
 interface RouteEntry {

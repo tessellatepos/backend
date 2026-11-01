@@ -11,6 +11,12 @@ export const GATEWAY_PREFIX = "/gateway/v1";
 /** Prefix the plugin-owned gateway routes live under. */
 export const GATEWAY_PLUGIN_PREFIX = `${GATEWAY_PREFIX}/plugins`;
 
+/** A request header an operation reads, documented in the OpenAPI document. */
+export interface DocumentedHeader {
+    name: string;
+    description: string;
+}
+
 /**
  * A core operation: the public descriptor plus how it reaches the internal
  * route it wraps. `internalPath` defaults to `path`; `toInternal` maps the
@@ -19,6 +25,18 @@ export const GATEWAY_PLUGIN_PREFIX = `${GATEWAY_PREFIX}/plugins`;
 export interface CoreGatewayOperation extends GatewayOperation {
     internalPath?: string;
     toInternal?: (input: unknown) => unknown;
+    /**
+     * Answers carry an ETag and `Cache-Control: private, max-age=<n>`, and a
+     * matching `If-None-Match` is answered 304. Only for GET operations whose
+     * body is the same for the same credential until the data changes.
+     */
+    cacheSeconds?: number;
+    /** Request headers the operation reads, for the OpenAPI document. */
+    headers?: DocumentedHeader[];
+    /** Extra statuses the operation can answer, with a description each. */
+    statuses?: Record<number, string>;
+    /** Response headers sent on some answers, with a description each. */
+    responseHeaders?: DocumentedHeader[];
 }
 
 /** Who declared an operation. */
@@ -41,6 +59,10 @@ export interface GatewayEntry {
     invokeParams: Record<string, string>;
     handle: RequestHandler;
     toInternal?: (input: unknown) => unknown;
+    cacheSeconds?: number;
+    headers?: DocumentedHeader[];
+    statuses?: Record<number, string>;
+    responseHeaders?: DocumentedHeader[];
 }
 
 /**
@@ -188,6 +210,10 @@ export function coreEntries(router: {
         invokeParams: {},
         handle: router.router as RequestHandler,
         toInternal: operation.toInternal,
+        cacheSeconds: operation.cacheSeconds,
+        headers: operation.headers,
+        statuses: operation.statuses,
+        responseHeaders: operation.responseHeaders,
     }));
 }
 

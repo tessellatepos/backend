@@ -16,6 +16,7 @@ import type {
     ItemCategory,
     ItemVariation,
     ItemVariationLocationOverrides,
+    SalesChannel,
 } from "@tessellatepos/sdk";
 
 type TDrizzleDB = typeof drizzleDB;
@@ -274,6 +275,9 @@ export async function hydrateItems(
             locationOverrides: parseLocationOverrides(row.locationOverrides),
             trackInventory: row.trackInventory,
             parent: { id: row.itemId, name: itemNameById.get(row.itemId) },
+            ...(row.channels
+                ? { channels: row.channels as SalesChannel[] }
+                : {}),
         });
         variationsByItem.set(row.itemId, list);
     }
@@ -310,6 +314,7 @@ export async function hydrateItems(
         isTaxable: row.isTaxable,
         isArchived: row.isArchived,
         image: row.image,
+        channels: row.channels as SalesChannel[],
         variations: variationsByItem.get(row.id) ?? [],
         categories: categoriesByItem.get(row.id) ?? [],
         locationIds: locationIdsByItem.get(row.id) ?? [],

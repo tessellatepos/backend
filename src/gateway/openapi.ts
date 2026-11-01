@@ -126,6 +126,57 @@ function operationObject(entry: GatewayEntry): JsonObject {
             },
         },
     };
+    if (entry.cacheSeconds !== undefined) {
+        const responses = op.responses as Record<string, JsonObject>;
+        const ok = responses["200"] as JsonObject;
+        ok.headers = {
+            ETag: {
+                description: "Identifies this answer",
+                schema: { type: "string" },
+            },
+            "Cache-Control": {
+                description: `private, max-age=${entry.cacheSeconds}`,
+                schema: { type: "string" },
+            },
+        };
+        responses["304"] = {
+            description: "Not modified: the If-None-Match ETag is current",
+        };
+        (op.parameters as JsonObject[]).push({
+            name: "If-None-Match",
+            in: "header",
+            required: false,
+            schema: { type: "string" },
+        });
+    }
+    for (const header of entry.headers ?? []) {
+        (op.parameters as JsonObject[]).push({
+            name: header.name,
+            in: "header",
+            required: false,
+            description: header.description,
+            schema: { type: "string" },
+        });
+    }
+    const responses = op.responses as Record<string, JsonObject>;
+    for (const [status, description] of Object.entries(entry.statuses ?? {})) {
+        responses[status] = {
+            description,
+            content: { "application/json": { schema: ERROR_SCHEMA } },
+        };
+    }
+    if (entry.responseHeaders?.length) {
+        const ok = responses["200"] as JsonObject;
+        ok.headers = {
+            ...((ok.headers as JsonObject | undefined) ?? {}),
+            ...Object.fromEntries(
+                entry.responseHeaders.map((h) => [
+                    h.name,
+                    { description: h.description, schema: { type: "string" } },
+                ]),
+            ),
+        };
+    }
     if (isBody && operation.request) {
         op.requestBody = {
             required: true,

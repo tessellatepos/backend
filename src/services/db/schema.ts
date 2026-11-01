@@ -107,6 +107,11 @@ export const ordersTable = pgTable("tessellate-orders", {
     locationId: text("location_id").notNull(),
     referenceId: varchar("reference_id", { length: 255 }).primaryKey(),
     sourceName: varchar("source_name", { length: 255 }),
+    // Set only for orders created through a gateway credential; these are the
+    // orders the open-order cap counts and the expiry job may cancel.
+    createdByCredential: varchar("created_by_credential", { length: 255 }),
+    // Set once an invoice is sent for the order; invoiced orders never expire.
+    invoicedAt: timestamp("invoiced_at", { withTimezone: true }),
     customerId: varchar("customer_id", { length: 255 }),
     lineItems: jsonb("line_items"),
     taxes: jsonb("taxes"),
@@ -133,6 +138,12 @@ export const catalogItemsTable = pgTable("tessellate-catalog-items", {
     isTaxable: boolean("is_taxable"),
     isArchived: boolean("is_archived").default(false),
     image: text("image"),
+    // Not written by a provider sync, so a Square item keeps the channels set
+    // here. A provider cannot say where Tessellate may sell an item.
+    channels: text("channels")
+        .array()
+        .notNull()
+        .default(sql`ARRAY['pos']::text[]`),
     // "synced" rows mirror a provider's catalog (Square) and are replaced by
     // its sync; "local" rows were created here and no sync may touch them.
     origin: varchar("origin", { length: 16 }).notNull().default("synced"),
@@ -156,6 +167,8 @@ export const catalogItemVariationsTable = pgTable(
         priceMoney: jsonb("price_money"),
         locationOverrides: jsonb("location_overrides"),
         trackInventory: boolean("track_inventory"),
+        // Null follows the item's channels.
+        channels: text("channels").array(),
         providerMetadata: jsonb("provider_metadata"),
         createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
         updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
@@ -304,6 +317,58 @@ export const apiWebhookDeliveriesTable = pgTable(
             table.credential_id,
             table.created_at,
         ),
+    ],
+);
+
+// One attempt to collect payment for an online order (a hosted checkout or an
+// invoice). An order can have several: an expired checkout, then an invoice.
+export const onlinePaymentsTable = pgTable(
+    "tessellate-online-payments",
+    {
+        id: varchar("id", { length: 64 }).primaryKey().notNull(),
+        order_reference: varchar("order_reference", { length: 255 })
+            .notNull()
+            .references(() => ordersTable.referenceId, { onDelete: "cascade" }),
+        processor_id: varchar("processor_id", { length: 64 }).notNull(),
+        kind: varchar("kind", { length: 16 }).notNull(),
+        external_id: varchar("external_id", { length: 255 }).notNull(),
+        url: text("url"),
+        status: varchar("status", { length: 16 }).notNull(),
+        amount: jsonb("amount").notNull(),
+        due_date: varchar("due_date", { length: 10 }),
+        // When the hosted page stops accepting payment; null if it never does.
+        expires_at: timestamp("expires_at", { withTimezone: true }),
+        created_at: timestamp("created_at", { withTimezone: true })
+            .defaultNow()
+            .notNull(),
+        updated_at: timestamp("updated_at", { withTimezone: true })
+            .defaultNow()
+            .notNull(),
+    },
+    (table) => [
+        uniqueIndex("tessellate-online-payments-external").on(
+            table.processor_id,
+            table.external_id,
+        ),
+        index("tessellate-online-payments-order").on(table.order_reference),
+    ],
+);
+
+// Per-location processor settings. `config` is a JSON object of keys and
+// secrets encrypted with services/crypto.ts; it is never returned by the API.
+export const paymentProcessorSettingsTable = pgTable(
+    "tessellate-payment-processor-settings",
+    {
+        processor_id: varchar("processor_id", { length: 64 }).notNull(),
+        location_id: varchar("location_id", { length: 255 }).notNull(),
+        enabled: boolean("enabled").notNull().default(false),
+        config_encrypted: text("config_encrypted"),
+        updated_at: timestamp("updated_at", { withTimezone: true })
+            .defaultNow()
+            .notNull(),
+    },
+    (table) => [
+        primaryKey({ columns: [table.processor_id, table.location_id] }),
     ],
 );
 

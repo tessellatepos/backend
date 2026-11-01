@@ -19,6 +19,7 @@ import type {
 } from "@tessellatepos/sdk";
 import { COUNTRIES, toBigIntAmount } from "@tessellatepos/sdk";
 import { configDotenv } from "dotenv";
+import { syncOrderFromSquare } from "@/services/db/orders";
 import { Logger } from "tslog";
 import type {
     squareHelperCategory,
@@ -77,6 +78,8 @@ const client = new SquareClient({
     token: () => resolveAccessToken(),
     environment: getSquareEnvironment(),
 });
+
+export { client as squareClient };
 
 function mapPricingType(
     pricingType?: string,
@@ -405,6 +408,39 @@ async function fetchOrder(orderId: string): Promise<Order | undefined | null> {
 }
 
 /**
+ * Cancels an open, unpaid order with Square and mirrors the result locally.
+ * Square rejects a stale version, so a payment landing first wins.
+ * @param orderId the Square order id
+ * @returns the canceled order, or null if it is missing, paid or closed
+ */
+async function cancelOrder(orderId: string): Promise<Order | null> {
+    const current = await fetchOrder(orderId);
+    if (
+        !current ||
+        current.state !== "OPEN" ||
+        (current.tenders?.length ?? 0) > 0
+    ) {
+        return null;
+    }
+    const response = await client.orders.update({
+        orderId,
+        idempotencyKey: crypto.randomUUID(),
+        order: {
+            locationId: current.locationId,
+            version: current.version,
+            state: "CANCELED",
+        },
+    });
+    if (!response?.order) return null;
+    const canceled = {
+        ...response.order,
+        lineItems: mapSquareOrderLineItems(response.order.lineItems),
+    } as Order;
+    await syncOrderFromSquare(canceled);
+    return canceled;
+}
+
+/**
  * Creates a terminal checkour
  * @param orderId the order id for the checkout process
  * @param amount the amount to check out with a square terminal
@@ -729,6 +765,7 @@ export const squareProvider: CatalogProvider &
     fetchLocations,
     createOrder,
     fetchOrder,
+    cancelOrder,
     createTerminalCheckout,
     getTerminalCheckoutStatus,
     payCash,
