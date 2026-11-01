@@ -5,7 +5,10 @@ import {
     getActiveProviderId,
     providerInfo,
 } from "@/services/providers";
-import { OrderConflictError } from "@/services/providers/types";
+import {
+    InvalidOrderError,
+    OrderConflictError,
+} from "@/services/providers/types";
 import {
     getConfigDeviceByID,
     getPairedDeviceByType,
@@ -192,7 +195,9 @@ orderRouter.post(
 
             modifiedOrderDetails.referenceId = crypto.randomUUID();
 
-            const order = await provider.createOrder(modifiedOrderDetails);
+            const order = await provider.createOrder(modifiedOrderDetails, {
+                catalogPricing: Boolean(req.gatewayCredential),
+            });
 
             if (order !== null && order !== undefined) {
                 logger.debug("Created order:", order.referenceId);
@@ -212,6 +217,10 @@ orderRouter.post(
                 res.status(500).json({ message: "Failed to create order" });
             }
         } catch (error) {
+            if (error instanceof InvalidOrderError) {
+                res.status(400).json({ message: error.message });
+                return;
+            }
             logger.error("Failed to create order", error);
             res.status(500).json({ message: "Failed to create order" });
         }

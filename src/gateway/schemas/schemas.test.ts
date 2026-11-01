@@ -80,7 +80,7 @@ describe("orders", () => {
         assert.equal(parsed.line_items[0].quantity, 2n);
     });
 
-    it("rejects any client-supplied price, discount or total", () => {
+    it("rejects a client-supplied discount or total, and the old price key", () => {
         const withPrice = {
             ...valid,
             line_items: [
@@ -98,6 +98,21 @@ describe("orders", () => {
         assert.throws(() =>
             orderCreateSchema.parse({ ...valid, discounts: [{ id: "d" }] }),
         );
+    });
+
+    it("carries a line price through for the provider to judge", () => {
+        const internal = toInternalOrder(
+            orderCreateSchema.parse({
+                ...valid,
+                line_items: [
+                    { variation_id: "V", quantity: "1", price_money: money },
+                ],
+            }),
+        );
+        assert.deepEqual(internal.lineItems[0].priceMoney, {
+            amount: 500n,
+            currency: "CAD",
+        });
     });
 
     it("rejects a quantity outside 1 to 999 and an empty basket", () => {

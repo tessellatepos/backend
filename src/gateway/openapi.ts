@@ -154,7 +154,10 @@ export function buildOpenApiDocument(
     const paths: Record<string, Record<string, JsonObject>> = {};
     for (const entry of registry.list()) {
         if (!allows(entry.operation.scope)) continue;
-        const path = toOpenApiPath(entry.publicPath);
+        // Relative to `servers`, which already carries the /gateway/v1 prefix.
+        const path = toOpenApiPath(
+            entry.publicPath.slice(GATEWAY_PREFIX.length) || "/",
+        );
         paths[path] ??= {};
         paths[path][entry.operation.method.toLowerCase()] =
             operationObject(entry);

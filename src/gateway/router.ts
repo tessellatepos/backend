@@ -6,7 +6,7 @@
 import express, { type Request, type Response, type Router } from "express";
 import { Logger } from "tslog";
 import { listAllowedOrigins } from "@/services/credentials";
-import { requireGatewayCredential, sendGatewayError } from "@/gateway/guards";
+import { limitPublicDocs, sendGatewayError } from "@/gateway/guards";
 import { GATEWAY_PREFIX, type GatewayRegistry } from "@/gateway/registry";
 import { operationChain } from "@/gateway/operation";
 import { buildOpenApiDocument } from "@/gateway/openapi";
@@ -68,13 +68,15 @@ export function populateGatewayRouter(registry: GatewayRegistry): void {
         void preflight(req, res, next);
     });
 
-    // The document and the reference are for credential holders only.
-    gatewayRouter.get("/openapi.json", requireGatewayCredential, (req, res) => {
-        const scopes = req.principal?.scopes ?? [];
+    // The document and the reference are public and read-only: they describe
+    // operations and expose no data. A caller with a credential sees only what
+    // it may call; anonymous callers see every operation. Per-IP rate limited.
+    gatewayRouter.get("/openapi.json", limitPublicDocs, (req, res) => {
+        const scopes = req.principal?.scopes ?? ["*"];
         res.set("Content-Type", "application/json");
         res.send(JSON.stringify(buildOpenApiDocument(registry, scopes)));
     });
-    gatewayRouter.get("/docs", requireGatewayCredential, (_req, res) => {
+    gatewayRouter.get("/docs", limitPublicDocs, (_req, res) => {
         res.type("html").send(docsPage());
     });
 

@@ -2,6 +2,8 @@ import express, { type Request, type Response, Router } from "express";
 import { Logger } from "tslog";
 import type { ApiCredentialInput } from "@tessellatepos/sdk";
 import { requireScope } from "@/middleware/authenticate";
+import { listDeliveries } from "@/services/db/webhookDeliveries";
+import { replayDelivery } from "@/gateway/webhooks/dispatch";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 import {
     CredentialNotFoundError,
@@ -168,6 +170,57 @@ credentialRouter.post(
             res.json(await revokeCredential(req.params.id));
         } catch (err) {
             sendError(res, err, "revoke");
+        }
+    },
+);
+
+credentialRouter.get(
+    "/:id/deliveries",
+    requireScope("credentials:admin"),
+    async (req: Request<{ id: string }>, res: Response) => {
+        try {
+            const rows = await listDeliveries(req.params.id, 100);
+            res.json(
+                rows.map((row) => ({
+                    id: row.id,
+                    event_id: row.event_id,
+                    type: row.event_type,
+                    status: row.status,
+                    attempts: row.attempts,
+                    last_status_code: row.last_status_code,
+                    last_error: row.last_error,
+                    replay_of: row.replay_of,
+                    created_at: row.created_at.toISOString(),
+                    delivered_at: row.delivered_at?.toISOString() ?? null,
+                    body: JSON.parse(row.body),
+                })),
+            );
+        } catch (err) {
+            sendError(res, err, "list deliveries of");
+        }
+    },
+);
+
+credentialRouter.post(
+    "/:id/deliveries/:deliveryId/replay",
+    requireScope("credentials:admin"),
+    async (req: Request<{ id: string; deliveryId: string }>, res: Response) => {
+        try {
+            const row = await replayDelivery(
+                req.params.id,
+                req.params.deliveryId,
+            );
+            if (!row) {
+                res.status(404).json({ message: "Delivery not found" });
+                return;
+            }
+            res.status(201).json({
+                id: row.id,
+                status: row.status,
+                replay_of: row.replay_of,
+            });
+        } catch (err) {
+            sendError(res, err, "replay a delivery of");
         }
     },
 );

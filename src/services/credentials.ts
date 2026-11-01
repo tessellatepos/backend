@@ -4,6 +4,8 @@
  * the previous secret until its overlap ends. The webhook secret signs
  * deliveries and is stored encrypted.
  */
+import { isIP } from "node:net";
+import { isBlockedAddress } from "@/gateway/webhooks/ssrf";
 import { createHash, randomBytes } from "node:crypto";
 import { Logger } from "tslog";
 import {
@@ -74,6 +76,7 @@ export function toApiCredential(row: CredentialRow): ApiCredential {
         created_by: row.created_by,
         created_at: row.created_at.toISOString(),
         last_used_at: row.last_used_at?.toISOString() ?? null,
+        ...(row.revoked_at ? { revoked_at: row.revoked_at.toISOString() } : {}),
     };
 }
 
@@ -178,7 +181,14 @@ export function validateWebhookUrl(value: unknown): string | null {
     const ok =
         url.protocol === "https:" ||
         (url.protocol === "http:" && isLoopback(url.hostname));
-    if (!ok || url.username || url.password) {
+    // Private, link-local and metadata addresses are never a webhook target
+    // (names are checked again at delivery, when they are resolved).
+    const literal = url.hostname.replace(/^\[|\]$/g, "");
+    const linkLocal =
+        isIP(literal) !== 0 &&
+        !isLoopback(url.hostname) &&
+        isBlockedAddress(literal);
+    if (!ok || linkLocal || url.username || url.password) {
         throw new CredentialValidationError(
             "webhook_url must be https (http only to localhost)",
         );

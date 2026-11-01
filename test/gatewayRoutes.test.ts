@@ -13,6 +13,12 @@ import { createCredential, revokeCredential } from "@/services/credentials";
 import { getRedisClient, setItemsByLocationID } from "@/services/redis";
 import { createApp, mountApiRoutes } from "@/app";
 import { TessellatePluginRegistry } from "@/utils/registry/plugin/pluginRegistry";
+import { drizzleDB } from "@/services/db/postgres";
+import {
+    catalogItemVariationsTable,
+    catalogItemsTable,
+} from "@/services/db/schema";
+import { eq } from "drizzle-orm";
 import { migrateTestDb } from "./helpers/db";
 
 const suffix = randomUUID().slice(0, 8);
@@ -81,6 +87,24 @@ describe("gateway routes", () => {
             item("alpha", [locA]),
             item("beta", [locB]),
         ]);
+        // The local provider prices online orders from the database catalog.
+        await drizzleDB
+            .insert(catalogItemsTable)
+            .values({ id: `alpha-${suffix}`, name: "alpha", origin: "local" });
+        await drizzleDB.insert(catalogItemVariationsTable).values([
+            {
+                variationId: `alpha-var-${suffix}`,
+                itemId: `alpha-${suffix}`,
+                pricingType: "FIXED",
+                priceMoney: { amount: "500", currency: "CAD" },
+            },
+            {
+                variationId: `donate-var-${suffix}`,
+                itemId: `alpha-${suffix}`,
+                pricingType: "VARIABLE",
+                priceMoney: { amount: "0", currency: "CAD" },
+            },
+        ]);
 
         const auth = createAuth();
         const email = `owner-routes-${suffix}@example.test`;
@@ -136,6 +160,12 @@ describe("gateway routes", () => {
             );
         }
         for (const id of locs) await removeLocation(id);
+        await drizzleDB
+            .delete(catalogItemVariationsTable)
+            .where(eq(catalogItemVariationsTable.itemId, `alpha-${suffix}`));
+        await drizzleDB
+            .delete(catalogItemsTable)
+            .where(eq(catalogItemsTable.id, `alpha-${suffix}`));
         await pool.query(
             `DELETE FROM "tessellate-auth-user" WHERE email LIKE $1`,
             [`%-routes-${suffix}@example.test`],
@@ -243,25 +273,68 @@ describe("gateway routes", () => {
         assert.ok(order.id);
     });
 
-    it("refuses client-supplied prices on order creation", async () => {
-        const res = await call("POST", "/gateway/v1/orders", {
-            auth: basic(writer),
-            body: {
-                location_id: locA,
-                line_items: [
-                    {
-                        variation_id: `alpha-var-${suffix}`,
-                        quantity: "1",
-                        priceMoney: { amount: "1", currency: "CAD" },
-                    },
-                ],
-            },
+    describe("order pricing", () => {
+        const order = (lines: unknown[]) =>
+            call("POST", "/gateway/v1/orders", {
+                auth: basic(writer),
+                body: { location_id: locA, line_items: lines },
+            });
+        const total = async (res: Response) =>
+            ((await res.json()) as { totalMoney: { amount: string } })
+                .totalMoney.amount;
+
+        it("ignores a lower client price for a fixed-price variation", async () => {
+            const res = await order([
+                {
+                    variation_id: `alpha-var-${suffix}`,
+                    quantity: "2",
+                    price_money: { amount: "1", currency: "CAD" },
+                },
+            ]);
+            assert.equal(res.status, 200, await res.clone().text());
+            assert.equal(await total(res), "1000");
         });
-        assert.equal(res.status, 400);
-        assert.equal(
-            ((await res.json()) as { code: string }).code,
-            "invalid_request",
-        );
+
+        it("uses the client price for a variable-price variation", async () => {
+            const res = await order([
+                {
+                    variation_id: `donate-var-${suffix}`,
+                    quantity: "1",
+                    price_money: { amount: "250", currency: "CAD" },
+                },
+            ]);
+            assert.equal(res.status, 200, await res.clone().text());
+            assert.equal(await total(res), "250");
+            const bad = await order([
+                { variation_id: `donate-var-${suffix}`, quantity: "1" },
+            ]);
+            assert.equal(bad.status, 400);
+        });
+
+        it("rejects an unknown variation", async () => {
+            const res = await order([
+                { variation_id: `nope-${suffix}`, quantity: "1" },
+            ]);
+            assert.equal(res.status, 400);
+        });
+
+        it("still refuses discounts and totals", async () => {
+            const res = await call("POST", "/gateway/v1/orders", {
+                auth: basic(writer),
+                body: {
+                    location_id: locA,
+                    totalMoney: { amount: "1", currency: "CAD" },
+                    line_items: [
+                        { variation_id: `alpha-var-${suffix}`, quantity: "1" },
+                    ],
+                },
+            });
+            assert.equal(res.status, 400);
+            assert.equal(
+                ((await res.json()) as { code: string }).code,
+                "invalid_request",
+            );
+        });
     });
 
     it("reads an order at the credential's location and 404s an unknown one", async () => {
@@ -378,34 +451,47 @@ describe("gateway routes", () => {
             paths: Record<string, Record<string, { operationId: string }>>;
         };
         assert.equal(doc.openapi, "3.1.0");
-        assert.ok(doc.paths["/gateway/v1/items"]?.get);
-        assert.ok(doc.paths["/gateway/v1/items/{locationId}"]?.get);
-        assert.ok(doc.paths["/gateway/v1/locations"]?.get);
+        assert.ok(doc.paths["/items"]?.get);
+        assert.ok(doc.paths["/items/{locationId}"]?.get);
+        assert.ok(doc.paths["/locations"]?.get);
+        assert.equal(doc.paths["/orders"], undefined, "no orders:write");
         assert.equal(
-            doc.paths["/gateway/v1/orders"],
-            undefined,
-            "no orders:write",
-        );
-        assert.equal(
-            doc.paths["/gateway/v1/customers"]?.post,
+            doc.paths["/customers"]?.post,
             undefined,
             "no customers:write",
         );
         assert.ok(!text.includes("tcs_"));
     });
 
-    it("requires a credential for the document and the reference", async () => {
-        assert.equal(
-            (await call("GET", "/gateway/v1/openapi.json")).status,
-            401,
-        );
-        const docs = await call("GET", "/gateway/v1/docs", {
-            auth: basic(reader),
-        });
+    it("serves the document and the reference without a credential", async () => {
+        const anon = await call("GET", "/gateway/v1/openapi.json");
+        assert.equal(anon.status, 200);
+        const doc = (await anon.json()) as {
+            paths: Record<string, Record<string, unknown>>;
+        };
+        assert.ok(doc.paths["/orders"]?.post, "anonymous sees every operation");
+        const docs = await call("GET", "/gateway/v1/docs");
         assert.equal(docs.status, 200);
         const html = await docs.text();
         assert.match(html, /@scalar\/api-reference@1\.74\.0/);
         assert.match(html, /openapi\.json/);
+        // Every other gateway route still needs a credential.
+        for (const path of ["/gateway/v1/items", "/gateway/v1/locations"]) {
+            assert.equal((await call("GET", path)).status, 401, path);
+        }
+        assert.equal((await call("POST", "/gateway/v1/orders")).status, 401);
+        // A wrong credential gets the public view of the docs, nothing else.
+        const wrong = {
+            auth: "Basic " + Buffer.from("tcid_x:nope").toString("base64"),
+        };
+        assert.equal(
+            (await call("GET", "/gateway/v1/openapi.json", wrong)).status,
+            200,
+        );
+        assert.equal(
+            (await call("GET", "/gateway/v1/items", wrong)).status,
+            401,
+        );
     });
 
     it("answers a preflight for a live origin only", async () => {
@@ -570,7 +656,7 @@ describe("plugin routes on the gateway", () => {
         });
         const paths = ((await doc.json()) as { paths: Record<string, unknown> })
             .paths;
-        assert.equal(paths["/gateway/v1/plugins/loyalty/points"], undefined);
+        assert.equal(paths["/plugins/loyalty/points"], undefined);
     });
 
     it("gives a generic 500 when a plugin handler throws", async () => {
