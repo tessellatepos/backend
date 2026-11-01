@@ -439,4 +439,38 @@ describe("LOCAL devices (cash-only tills in a staff browser)", () => {
             assert.equal(manager.status, 200);
         });
     });
+
+    describe("POST /api/v1/config/devices/:id", () => {
+        it("answers 409, not 500, when it moves a till onto a location that has one", async () => {
+            const a = await newLocation(`MoveA ${suffix}`);
+            const b = await newLocation(`MoveB ${suffix}`);
+            const tillA = await call(
+                "owner",
+                "POST",
+                "/api/v1/config/devices/local",
+                { locationId: a.id },
+            );
+            const tillB = await call(
+                "owner",
+                "POST",
+                "/api/v1/config/devices/local",
+                { locationId: b.id },
+            );
+            deviceIds.push(tillA.body.id, tillB.body.id);
+            const res = await call(
+                "owner",
+                "POST",
+                `/api/v1/config/devices/${tillB.body.id}`,
+                { square_location: a.id },
+            );
+            assert.equal(res.status, 409, JSON.stringify(res.body));
+            assert.match(res.body.message, /already has a local till/);
+            const stored = await getLocalDeviceForLocation(a.id);
+            assert.equal(stored?.id, tillA.body.id);
+            assert.equal(
+                (await getLocalDeviceForLocation(b.id))?.id,
+                tillB.body.id,
+            );
+        });
+    });
 });

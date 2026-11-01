@@ -76,6 +76,15 @@ export const configDevicev1Endpoint: ITessellateApiRouter = {
     router: configDeviceRouter,
 };
 
+/** Whether a database error is a unique-index violation (drizzle wraps pg's). */
+function isUniqueViolation(error: unknown): boolean {
+    const code = (e: unknown) => (e as { code?: string } | null)?.code;
+    return (
+        code(error) === "23505" ||
+        code((error as { cause?: unknown } | null)?.cause) === "23505"
+    );
+}
+
 configDeviceRouter.get("/", requireScope("devices:read"), async (req, res) => {
     logger.info("Received GET request for all device configurations");
     const configSystems = await getAllConfigDevices();
@@ -310,7 +319,19 @@ configDeviceRouter.post(
         logger.info(`Received POST request for device ID: ${deviceId}`);
         // Never let a request body set or clear the device token hash.
         const updatedConfig = withoutTokenHash(req.body as IConfigDevice);
-        await updateConfigDevice(deviceId, updatedConfig);
+        try {
+            await updateConfigDevice(deviceId, updatedConfig);
+        } catch (error) {
+            // The unique index allows one LOCAL till per location.
+            if (isUniqueViolation(error)) {
+                res.status(409).json({
+                    message:
+                        "That location already has a local till; remove it first",
+                });
+                return;
+            }
+            throw error;
+        }
         res.json(updatedConfig);
     },
 );
