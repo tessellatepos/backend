@@ -1,5 +1,6 @@
 import express, { Router } from "express";
 import { Logger } from "tslog";
+import { frontendUrl } from "@/config/urls";
 import {
     createAuthorizationState,
     getAuthorizationStatus,
@@ -62,7 +63,7 @@ squareRouter.get("/oauth/authorize", (req, res) => {
 });
 
 squareRouter.get("/oauth/callback", async (req, res) => {
-    const settingsUrl = `${process.env.FRONTEND_URL ?? ""}/settings`;
+    const settingsUrl = `${frontendUrl ?? ""}/settings`;
     const code = typeof req.query.code === "string" ? req.query.code : null;
     const state = typeof req.query.state === "string" ? req.query.state : null;
 

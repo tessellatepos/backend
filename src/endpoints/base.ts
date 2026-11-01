@@ -1,5 +1,6 @@
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 import express, { Router } from "express";
+import { frontendUrl } from "@/config/urls";
 
 const baseRouter: Router = express.Router();
 
@@ -15,5 +16,5 @@ baseRouter.get("/", (req, res) => {
 });
 
 baseRouter.get("/frontend", (req, res) => {
-    res.json({ url: process.env.FRONTEND_URL });
+    res.json({ url: frontendUrl });
 });

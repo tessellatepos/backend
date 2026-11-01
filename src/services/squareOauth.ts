@@ -2,6 +2,7 @@ import { SquareClient, SquareEnvironment } from "square";
 import type { ObtainTokenRequest, ObtainTokenResponse } from "square";
 import { configDotenv } from "dotenv";
 import { Logger } from "tslog";
+import { squareRedirectUrl } from "@/config/urls";
 import { decrypt, encrypt, randomToken, safeEqual } from "@/services/crypto";
 import {
     deleteConfigSystem,
@@ -82,7 +83,7 @@ const oauthClient = new SquareClient({
 function getAppCredentials() {
     const clientId = process.env.SQUARE_APPLICATION_ID;
     const clientSecret = process.env.SQUARE_APPLICATION_SECRET;
-    const redirectUrl = process.env.SQUARE_REDIRECT_URL;
+    const redirectUrl = squareRedirectUrl;
 
     if (!clientId || !clientSecret) {
         throw new Error(
