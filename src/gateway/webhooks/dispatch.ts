@@ -83,6 +83,17 @@ export async function queueEvent(
 ): Promise<number> {
     const spec = WEBHOOK_EVENTS[name];
     if (!spec) return 0;
+    // An order's events go to the credential that created it, not to every
+    // credential that could read orders at the location.
+    let owner: string | undefined;
+    if (spec.orderRef) {
+        const ref = spec.orderRef(args);
+        const created = ref
+            ? (await getOrderByAnyId(ref))?.createdByCredential
+            : null;
+        if (!created) return 0;
+        owner = created;
+    }
     const built = spec.toData(args);
     if (!built) {
         logger.warn(
@@ -91,16 +102,6 @@ export async function queueEvent(
         return 0;
     }
     const body = eventBody(spec.type, built.data, now);
-    // An order's events go to the credential that created it, not to every
-    // credential that could read orders at the location.
-    const owner =
-        built.orderRef === undefined
-            ? undefined
-            : ((built.orderRef &&
-                  (await getOrderByAnyId(built.orderRef))
-                      ?.createdByCredential) ??
-              null);
-    if (owner === null) return 0;
     const rows = (await listCredentialRows())
         .filter(
             (c) =>

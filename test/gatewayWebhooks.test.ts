@@ -14,6 +14,7 @@ import {
     queueEvent,
     replayDelivery,
 } from "@/gateway/webhooks/dispatch";
+import { WEBHOOK_EVENTS } from "@/gateway/webhooks/events";
 import { signWebhook } from "@/gateway/webhooks/sign";
 import { getDelivery, listDeliveries } from "@/services/db/webhookDeliveries";
 import { insertOrder } from "@/services/db/orders";
@@ -328,5 +329,55 @@ describe("gateway outbound webhooks", () => {
         assert.ok((await queueEvent("catalogSynced", [])) >= 2);
         assert.equal((await listDeliveries(a.client_id, 10)).length, 1);
         assert.equal((await listDeliveries(b.client_id, 10)).length, 1);
+    });
+
+    it("accepts the order shapes a staff till sends, and still refuses nonsense", () => {
+        const base = {
+            referenceId: "r1",
+            id: "r1",
+            locationId: "L1",
+            state: "OPEN",
+            discounts: [],
+            totalMoney: { amount: 700n, currency: "CAD" },
+        };
+        const toData = (line: unknown) =>
+            WEBHOOK_EVENTS.orderCreated.toData([
+                { ...base, lineItems: [line] },
+            ]);
+        const lines = [
+            // what the storefront sends: bigints as strings
+            {
+                name: "Tea",
+                quantity: "2",
+                priceMoney: { amount: "350", currency: "CAD" },
+                pricingType: "FIXED",
+            },
+            // numbers and nulls from other tills
+            {
+                name: "Tea",
+                quantity: 2,
+                priceMoney: { amount: 350, currency: "CAD" },
+            },
+            { name: "Tea", quantity: 2n, priceMoney: null, pricingType: null },
+        ];
+        for (const line of lines)
+            assert.ok(toData(line), String(lines.indexOf(line)));
+        const data = toData(lines[1])?.data as {
+            lineItems: { quantity: string; priceMoney: { amount: string } }[];
+        };
+        assert.equal(data.lineItems[0].quantity, "2");
+        assert.equal(data.lineItems[0].priceMoney.amount, "350");
+        for (const bad of [
+            { quantity: 1.5 },
+            { quantity: "two" },
+            { priceMoney: { amount: 3.5, currency: "CAD" } },
+            { pricingType: "SOMETIMES" },
+        ]) {
+            assert.equal(
+                toData({ name: "Tea", ...bad }),
+                null,
+                JSON.stringify(bad),
+            );
+        }
     });
 });
