@@ -10,6 +10,8 @@ jobs:
         runs-on: ubuntu-latest
         env:
             HUSKY: 0
+            # The install above already ran; skip pnpm's repeat check, which would re-apply the age policy.
+            pnpm_config_verify_deps_before_run: false
             DATABASE_URL: postgres://tessellate_user:tessellate_pass@localhost:5432/tessellate_test
             REDIS_URL: redis://localhost:6379/7
         services:
@@ -38,7 +40,7 @@ jobs:
                   require-lockfile: true
                   install: false
                   cache: true
-            - run: pnpm install --frozen-lockfile --ignore-scripts
+            - run: pnpm install --frozen-lockfile --ignore-scripts '--config.minimumReleaseAgeExclude=@tessellatepos/*'
             - run: pnpm lint
             - run: pnpm run build
             - run: pnpm test
