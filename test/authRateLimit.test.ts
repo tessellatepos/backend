@@ -5,7 +5,11 @@ import type { AddressInfo } from "node:net";
 import express from "express";
 import { pool } from "@/services/db/postgres";
 import { AUTH_BASE_PATH, createAuth } from "@/services/auth";
-import { authv1Endpoint } from "@/endpoints/v1/auth";
+import {
+    SIGN_IN_MAX_FAILURES,
+    authv1Endpoint,
+    resetSignInLimits,
+} from "@/endpoints/v1/auth";
 import { migrateTestDb } from "./helpers/db";
 
 /**
@@ -124,5 +128,34 @@ describe("sign-in rate limit", () => {
             "x-forwarded-for": "192.0.2.77",
         });
         assert.notEqual(other, 429);
+    });
+
+    it("throttles failed password sign-ins per account across addresses", async () => {
+        process.env.AUTH_RATE_LIMIT = "off";
+        createAuth();
+        resetSignInLimits();
+        const r = await start(false);
+        running.push(r);
+        const post = async (email: string, ip: number) => {
+            const res = await fetch(`${r.url}${AUTH_BASE_PATH}/sign-in/email`, {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                    origin: "http://localhost:5173",
+                    "x-forwarded-for": `203.0.113.${ip}`,
+                },
+                body: JSON.stringify({ email, password: "x" }),
+            });
+            await res.arrayBuffer();
+            return res.status;
+        };
+        for (let i = 0; i < SIGN_IN_MAX_FAILURES; i++) {
+            assert.notEqual(await post("Victim@Example.test", i), 429);
+        }
+        assert.equal(await post("victim@example.test", 99), 429);
+        assert.notEqual(await post("other@example.test", 99), 429);
+        resetSignInLimits();
+        delete process.env.AUTH_RATE_LIMIT;
+        createAuth();
     });
 });
