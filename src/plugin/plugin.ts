@@ -67,6 +67,10 @@ export class Plugin {
         return this.mounts[kind];
     }
 
+    public getPermissions(): PluginPermissionProvider {
+        return this.permissions;
+    }
+
     public getManifest(): PluginManifest {
         return this.manifest;
     }

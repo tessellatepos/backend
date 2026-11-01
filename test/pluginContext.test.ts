@@ -5,17 +5,33 @@ import type { Principal } from "@tessellatepos/sdk";
 import { TessellatePluginApiRegistry } from "@/utils/registry/api/pluginApiRegistry";
 import type { TessellatePluginDatabaseRegistry } from "@/utils/registry/database/pluginDatabaseRegistry";
 
+const noPermissions = {
+    cart: false,
+    catalog: false,
+    checkout: false,
+    device: false,
+    order: false,
+    auth: false,
+    customer: false,
+};
+
 const databases = {
     getRepository: () => ({}),
 } as unknown as TessellatePluginDatabaseRegistry;
 
 async function dispatch(principal: Principal | null) {
     const registry = new TessellatePluginApiRegistry(databases);
-    registry.register("acme", {
-        method: "GET",
-        route: "/who",
-        handler: async (_req, ctx) => ({ body: { principal: ctx.principal } }),
-    });
+    registry.register(
+        "acme",
+        {
+            method: "GET",
+            route: "/who",
+            handler: async (_req, ctx) => ({
+                body: { principal: ctx.principal },
+            }),
+        },
+        noPermissions,
+    );
     let body: unknown;
     const res = {
         status: () => res,

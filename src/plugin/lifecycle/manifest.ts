@@ -117,5 +117,6 @@ export function grantedPermissions(
         device: requested.has(PluginPermission.DEVICE),
         order: requested.has(PluginPermission.ORDER),
         auth: requested.has(PluginPermission.AUTH),
+        customer: requested.has(PluginPermission.CUSTOMER),
     };
 }

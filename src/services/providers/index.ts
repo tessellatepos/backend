@@ -2,6 +2,7 @@ import { squareProvider } from "./square";
 import { localProvider } from "./local";
 import type {
     CatalogProvider,
+    CustomerProvider,
     PaymentProvider,
     DevicePairingProvider,
 } from "./types";
@@ -22,5 +23,6 @@ export function activeProviderName(): "local" | "square" {
  */
 export const activeProvider: CatalogProvider &
     PaymentProvider &
-    DevicePairingProvider =
+    DevicePairingProvider &
+    CustomerProvider =
     activeProviderName() === "local" ? localProvider : squareProvider;

@@ -1,47 +1,27 @@
 import { and, eq } from "drizzle-orm";
 import { parseMoney, stripBigints } from "@tessellatepos/sdk";
 import type {
-    CartItem,
+    Customer,
+    CustomerInput,
+    CustomerPage,
+    CustomerQuery,
     CurrencyCode,
-    Discount,
     Location,
     Money,
     Order,
-    OrderState,
     Tender,
 } from "@tessellatepos/sdk";
 import { drizzleDB } from "@/services/db/postgres";
 import { catalogItemVariationsTable, ordersTable } from "@/services/db/schema";
 import { getCatalogByLocation } from "@/services/db/catalog";
+import { customerStore, searchCustomers } from "@/services/db/customers";
 import { getLocations } from "@/services/db/locations";
-import { getOrderById } from "@/services/db/orders";
-import type { CatalogProvider, PaymentProvider } from "../types";
-
-/**
- * Converts a persisted square-orders row back into an Order.
- * @param row the persisted order row
- * @returns the order
- */
-function rowToOrder(row: typeof ordersTable.$inferSelect): Order {
-    return {
-        id: row.id ?? undefined,
-        locationId: row.locationId,
-        referenceId: row.referenceId,
-        source: row.sourceName ? { name: row.sourceName } : undefined,
-        customerId: row.customerId ?? undefined,
-        lineItems: (row.lineItems as CartItem[] | null) ?? undefined,
-        discounts: (row.discounts as Discount[] | null) ?? [],
-        netAmount: row.netAmount as Order["netAmount"],
-        tenders: (row.tenders as Tender[] | null) ?? undefined,
-        state: (row.state as OrderState | null) ?? undefined,
-        version: row.version ?? undefined,
-        totalMoney: parseMoney(row.totalMoney),
-        totalTaxMoney: parseMoney(row.totalTaxMoney),
-        totalDiscountMoney: parseMoney(row.totalDiscountMoney),
-        totalTipMoney: parseMoney(row.totalTipMoney),
-        totalServiceChargeMoney: parseMoney(row.totalServiceChargeMoney),
-    };
-}
+import { getOrderById, rowToOrder } from "@/services/db/orders";
+import type {
+    CatalogProvider,
+    CustomerProvider,
+    PaymentProvider,
+} from "../types";
 
 /**
  * Marks an order paid with a card tender for its full total and returns
@@ -290,7 +270,89 @@ async function confirmMobileReaderPayment(
     return markOrderPaidWithCard(orderId);
 }
 
-export const localProvider: CatalogProvider & PaymentProvider = {
+/**
+ * Lists the customers in Postgres, which is the source of truth here.
+ * @param query text search, filters and paging
+ * @returns a page of customers
+ */
+async function listCustomers(query: CustomerQuery): Promise<CustomerPage> {
+    return searchCustomers(query);
+}
+
+/**
+ * Fetches one customer from Postgres.
+ * @param id the customer id
+ * @returns the customer, or null if it doesn't exist
+ */
+async function getCustomer(id: string): Promise<Customer | null> {
+    return customerStore.get(id);
+}
+
+/**
+ * Creates a customer in Postgres with a generated id.
+ * @param input the customer's details
+ * @returns the created customer
+ */
+async function createCustomer(input: CustomerInput): Promise<Customer> {
+    const now = new Date().toISOString();
+    const customer: Customer = {
+        ...input,
+        id: crypto.randomUUID(),
+        created_at: now,
+        updated_at: now,
+    };
+    await customerStore.upsert(customer);
+    return (await customerStore.get(customer.id)) ?? customer;
+}
+
+/**
+ * Replaces a customer's details in Postgres.
+ * @param id the customer id
+ * @param input the customer's new details
+ * @returns the updated customer, or null if it doesn't exist
+ */
+async function updateCustomer(
+    id: string,
+    input: CustomerInput,
+): Promise<Customer | null> {
+    const existing = await customerStore.get(id);
+    if (!existing) return null;
+    await customerStore.upsert({
+        ...input,
+        id,
+        created_at: existing.created_at,
+        updated_at: existing.updated_at,
+    });
+    return customerStore.get(id);
+}
+
+/**
+ * Soft deletes a customer in Postgres.
+ * @param id the customer id
+ * @returns true if a customer was deleted
+ */
+async function deleteCustomer(id: string): Promise<boolean> {
+    return customerStore.remove(id);
+}
+
+/**
+ * Fetches every customer in Postgres. Nothing external to list from, so a
+ * sync of the local provider changes nothing.
+ * @returns all customers
+ */
+async function fetchCustomers(): Promise<Customer[]> {
+    return (await customerStore.list()).items;
+}
+
+export const localProvider: CatalogProvider &
+    PaymentProvider &
+    CustomerProvider = {
+    listCustomers,
+    getCustomer,
+    createCustomer,
+    updateCustomer,
+    deleteCustomer,
+    fetchCustomers,
     fetchCatalog,
     fetchLocations,
     createOrder,

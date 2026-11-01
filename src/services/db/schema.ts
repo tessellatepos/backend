@@ -187,6 +187,23 @@ export const locationsTable = pgTable("tessellate-locations", {
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
 
+export const customersTable = pgTable("tessellate-customers", {
+    id: varchar("id", { length: 255 }).primaryKey(),
+    givenName: text("given_name"),
+    familyName: text("family_name"),
+    companyName: text("company_name"),
+    email: text("email"),
+    phoneNumber: text("phone_number"),
+    address: jsonb("address"),
+    birthday: varchar("birthday", { length: 10 }),
+    note: text("note"),
+    tags: jsonb("tags").notNull().default([]),
+    provider: varchar("provider", { length: 50 }).notNull(),
+    providerId: varchar("provider_id", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
 export const pluginRegistryTable = pgTable("tessellate-plugin-registry", {
     id: varchar("id", { length: 255 }).primaryKey().notNull(),
     version: varchar("version", { length: 255 }),
