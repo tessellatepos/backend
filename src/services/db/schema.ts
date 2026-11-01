@@ -121,6 +121,9 @@ export const catalogItemsTable = pgTable("tessellate-catalog-items", {
     isTaxable: boolean("is_taxable"),
     isArchived: boolean("is_archived").default(false),
     image: text("image"),
+    // "synced" rows mirror a provider's catalog (Square) and are replaced by
+    // its sync; "local" rows were created here and no sync may touch them.
+    origin: varchar("origin", { length: 16 }).notNull().default("synced"),
     providerMetadata: jsonb("provider_metadata"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
@@ -155,6 +158,7 @@ export const catalogCategoriesTable = pgTable("tessellate-catalog-categories", {
     }),
     imageId: varchar("image_id", { length: 255 }),
     imageURL: text("image_url"),
+    origin: varchar("origin", { length: 16 }).notNull().default("synced"),
     providerMetadata: jsonb("provider_metadata"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),

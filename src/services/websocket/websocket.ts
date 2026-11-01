@@ -163,7 +163,11 @@ export function canReceive(principal: Principal, event: SocketEvent): boolean {
     if (event.type === "device_paired") {
         return hasScope(principal, "devices:read");
     }
-    if (!hasScope(principal, "orders:read")) return false;
+    if (event.type === "catalog_updated") {
+        if (!hasScope(principal, "catalog:read")) return false;
+    } else if (!hasScope(principal, "orders:read")) {
+        return false;
+    }
     const locationId = event.payload.locationId;
     if (!locationId || principal.location_ids === "all") return true;
     return principal.location_ids.includes(locationId);

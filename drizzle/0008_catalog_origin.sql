@@ -1,0 +1,2 @@
+ALTER TABLE "tessellate-catalog-categories" ADD COLUMN "origin" varchar(16) DEFAULT 'synced' NOT NULL;--> statement-breakpoint
+ALTER TABLE "tessellate-catalog-items" ADD COLUMN "origin" varchar(16) DEFAULT 'synced' NOT NULL;

@@ -6,7 +6,10 @@ import {
     providerInfo,
     setActiveProvider,
 } from "@/services/providers";
-import { updateCatalogInCache } from "@/services/catalogSync";
+import {
+    refreshCatalogCache,
+    updateCatalogInCache,
+} from "@/services/catalogSync";
 import { requireScope } from "@/middleware/authenticate";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 
@@ -62,6 +65,11 @@ configProviderRouter.post(
         } catch (err) {
             logger.warn("Catalog sync after provider switch failed:", err);
             syncError = "Switched, but the catalog sync failed.";
+            // The till cache must still follow the new provider's visibility
+            // rules (e.g. local items disappear under Square).
+            await refreshCatalogCache().catch((e: unknown) =>
+                logger.warn("Catalog cache refresh failed:", e),
+            );
         }
 
         res.json({ ...describeProvider(), syncError });

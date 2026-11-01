@@ -1,4 +1,5 @@
 import type {
+    CatalogImportReport,
     Customer,
     CustomerInput,
     CustomerPage,
@@ -9,6 +10,13 @@ import type {
     Order,
     ProviderId,
 } from "@tessellatepos/sdk";
+import type {
+    CategoryNode,
+    WriteContext,
+    WriteResult,
+} from "@/services/db/catalogManage";
+import type { ItemDraft, ItemPatch } from "@/services/catalogValidation";
+import type { ItemCategoryInput } from "@tessellatepos/sdk";
 
 /** Static facts about a provider that endpoints and the UI branch on. */
 export interface ProviderInfo {
@@ -17,6 +25,8 @@ export interface ProviderInfo {
     requiresTerminalDevice: boolean;
     /** Storefronts (locations) can be created and deleted locally. */
     canManageStorefronts: boolean;
+    /** Items, variations and categories can be created and edited here. */
+    canManageCatalog: boolean;
 }
 
 /**
@@ -39,6 +49,43 @@ export interface CatalogProvider {
      * @returns the locations
      */
     fetchLocations(): Promise<Location[]>;
+}
+
+/**
+ * Catalog writes, for providers that own their catalog. A provider whose
+ * catalog lives in an external system (Square) leaves these out, and the
+ * catalog endpoints answer 409 for it. Writes are all-or-nothing.
+ */
+export interface CatalogWriteProvider {
+    createItem(draft: ItemDraft, ctx: WriteContext): Promise<WriteResult>;
+    /** Replaces (`draft`) or merges onto (`patch`) an item; null if not found. */
+    updateItem(
+        id: string,
+        change: { draft: ItemDraft } | { patch: ItemPatch },
+        ctx: WriteContext,
+    ): Promise<WriteResult | null>;
+    archiveItem(
+        id: string,
+        archived: boolean,
+        ctx: WriteContext,
+    ): Promise<WriteResult | null>;
+    /** Refused with a 409 CatalogError while an order references the item. */
+    deleteItem(
+        id: string,
+        ctx: WriteContext,
+    ): Promise<{ locationIds: string[] } | null>;
+    createCategory(input: Partial<ItemCategoryInput>): Promise<CategoryNode>;
+    updateCategory(
+        id: string,
+        input: Partial<ItemCategoryInput>,
+    ): Promise<CategoryNode | null>;
+    /** @returns false when the category does not exist */
+    deleteCategory(id: string): Promise<boolean>;
+    importCatalog(
+        csv: string,
+        options: { dryRun: boolean },
+        ctx: WriteContext,
+    ): Promise<CatalogImportReport>;
 }
 
 /**

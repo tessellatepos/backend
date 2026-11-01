@@ -71,8 +71,9 @@ setupRouter.post("/owner", async (req: Request, res: Response) => {
     }
 });
 
-// Pre-check for the wizard: 204 when the token is right, nothing is created.
-// A wrong token is a failure on the same per-IP limiter as POST /owner.
+// Pre-check for the wizard: 204 when the token is right (or none is required),
+// nothing is created. A wrong token is a failure on the same per-IP limiter as
+// POST /owner.
 setupRouter.post("/verify-token", async (req: Request, res: Response) => {
     const key = req.ip ?? "unknown";
     if (isRateLimited(key)) {
