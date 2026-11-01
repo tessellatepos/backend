@@ -1,4 +1,4 @@
-FROM node:24-alpine AS builder
+FROM node:26-alpine AS builder
 RUN npm install -g pnpm@11.24.0
 WORKDIR /app
 
@@ -10,7 +10,7 @@ COPY src ./src
 RUN pnpm run build
 RUN pnpm prune --prod --ignore-scripts
 
-FROM node:24-alpine AS production
+FROM node:26-alpine AS production
 ENV NODE_ENV=production
 WORKDIR /app
 
