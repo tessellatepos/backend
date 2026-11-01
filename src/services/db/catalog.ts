@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, type SQL } from "drizzle-orm";
 import {
     catalogItemsTable,
     catalogItemVariationsTable,
@@ -115,7 +115,28 @@ async function upsertVariation(
  * @param db the drizzle instance to run the upserts against
  */
 async function upsertCatalogItems(items: Item[], db: TDrizzleDB) {
+    // A sync must never overwrite what a user created here.
+    const localIds = new Set(
+        items.length === 0
+            ? []
+            : (
+                  await db
+                      .select({ id: catalogItemsTable.id })
+                      .from(catalogItemsTable)
+                      .where(
+                          and(
+                              eq(catalogItemsTable.origin, "local"),
+                              inArray(
+                                  catalogItemsTable.id,
+                                  items.map((item) => item.id),
+                              ),
+                          ),
+                      )
+              ).map((row) => row.id),
+    );
+
     for (const item of items) {
+        if (localIds.has(item.id)) continue;
         const values = {
             name: item.name ?? null,
             displayName: item.displayName ?? null,
@@ -166,87 +187,78 @@ async function upsertCatalogItems(items: Item[], db: TDrizzleDB) {
 function toItemCategory(
     row: typeof catalogCategoriesTable.$inferSelect,
     categoriesById: Map<string, typeof catalogCategoriesTable.$inferSelect>,
+    seen: Set<string> = new Set(),
 ): ItemCategory {
-    const parentRow = row.parentCategoryId
-        ? categoriesById.get(row.parentCategoryId)
-        : undefined;
+    const parentRow =
+        row.parentCategoryId && !seen.has(row.parentCategoryId)
+            ? categoriesById.get(row.parentCategoryId)
+            : undefined;
+    seen.add(row.id);
 
     return {
         id: row.id,
         name: row.name,
         parentCategory: parentRow
-            ? toItemCategory(parentRow, categoriesById)
+            ? toItemCategory(parentRow, categoriesById, seen)
             : null,
         imageId: row.imageId,
         imageURL: row.imageURL,
     };
 }
 
+/** Which rows of the catalog a read sees. */
+export interface CatalogScope {
+    /**
+     * "synced" hides items and categories created locally: what Square's
+     * catalog looks like. Omit to see everything.
+     */
+    origin?: "synced";
+    /** Include archived items. Off by default. */
+    includeArchived?: boolean;
+}
+
+type ItemRow = typeof catalogItemsTable.$inferSelect;
+
 /**
- * Rebuilds an ItemCatalog from Postgres, optionally scoped to one location.
+ * Builds Items (variations, categories, location ids) from item rows.
  * ItemVariation.parent and Item.locationIds are reconstructed at read time
  * rather than stored, the same way redis.ts stitches `parent` back on today.
- * @param locationId the location to scope the catalog to, or all items if omitted
+ * @param itemRows the item rows to build, in the order to return them
+ * @param scope which categories to include
  * @param db the drizzle instance to query against
- * @returns the item catalog for the given location
+ * @returns the items, in the order of itemRows
  */
-export async function getCatalogByLocation(
-    locationId?: string,
+export async function hydrateItems(
+    itemRows: ItemRow[],
+    scope: CatalogScope = {},
     db: TDrizzleDB = drizzleDB,
-): Promise<ItemCatalog> {
-    let itemIds: string[] | undefined;
-    if (locationId) {
-        const locationRows = await db
-            .select({ itemId: catalogItemLocationsTable.itemId })
-            .from(catalogItemLocationsTable)
-            .where(eq(catalogItemLocationsTable.locationId, locationId));
-        itemIds = locationRows.map((row) => row.itemId);
-        if (itemIds.length === 0) return { items: [] };
-    }
-
-    const itemRows = await db
-        .select()
-        .from(catalogItemsTable)
-        .where(
-            itemIds
-                ? and(
-                      eq(catalogItemsTable.isArchived, false),
-                      inArray(catalogItemsTable.id, itemIds),
-                  )
-                : eq(catalogItemsTable.isArchived, false),
-        );
-
-    if (itemRows.length === 0) return { items: [] };
+): Promise<Item[]> {
+    if (itemRows.length === 0) return [];
 
     const allItemIds = itemRows.map((row) => row.id);
     const itemNameById = new Map(itemRows.map((row) => [row.id, row.name]));
 
-    const [variationRows, categoryLinkRows, locationRows] = await Promise.all([
-        db
-            .select()
-            .from(catalogItemVariationsTable)
-            .where(inArray(catalogItemVariationsTable.itemId, allItemIds)),
-        db
-            .select()
-            .from(catalogItemCategoriesTable)
-            .where(inArray(catalogItemCategoriesTable.itemId, allItemIds)),
-        db
-            .select()
-            .from(catalogItemLocationsTable)
-            .where(inArray(catalogItemLocationsTable.itemId, allItemIds)),
-    ]);
-
-    const categoryIds = [
-        ...new Set(categoryLinkRows.map((row) => row.categoryId)),
-    ];
-    const categoryRows =
-        categoryIds.length > 0
-            ? await db
-                  .select()
-                  .from(catalogCategoriesTable)
-                  .where(inArray(catalogCategoriesTable.id, categoryIds))
-            : [];
-    const categoriesById = new Map(categoryRows.map((row) => [row.id, row]));
+    const [variationRows, categoryLinkRows, locationRows, categoryRows] =
+        await Promise.all([
+            db
+                .select()
+                .from(catalogItemVariationsTable)
+                .where(inArray(catalogItemVariationsTable.itemId, allItemIds)),
+            db
+                .select()
+                .from(catalogItemCategoriesTable)
+                .where(inArray(catalogItemCategoriesTable.itemId, allItemIds)),
+            db
+                .select()
+                .from(catalogItemLocationsTable)
+                .where(inArray(catalogItemLocationsTable.itemId, allItemIds)),
+            db.select().from(catalogCategoriesTable),
+        ]);
+    const categoriesById = new Map(
+        categoryRows
+            .filter((row) => !scope.origin || row.origin === scope.origin)
+            .map((row) => [row.id, row]),
+    );
 
     const variationsByItem = new Map<string, ItemVariation[]>();
     for (const row of variationRows) {
@@ -265,6 +277,14 @@ export async function getCatalogByLocation(
         });
         variationsByItem.set(row.itemId, list);
     }
+    // Display order: ordinal when set (numeric text), then insertion order.
+    for (const list of variationsByItem.values()) {
+        list.sort(
+            (a, b) =>
+                Number(a.ordinal ?? Infinity) - Number(b.ordinal ?? Infinity) ||
+                0,
+        );
+    }
 
     const categoriesByItem = new Map<string, ItemCategory[]>();
     for (const link of categoryLinkRows) {
@@ -282,7 +302,7 @@ export async function getCatalogByLocation(
         locationIdsByItem.set(row.itemId, list);
     }
 
-    const items: Item[] = itemRows.map((row) => ({
+    return itemRows.map((row) => ({
         id: row.id,
         name: row.name,
         displayName: row.displayName,
@@ -294,8 +314,47 @@ export async function getCatalogByLocation(
         categories: categoriesByItem.get(row.id) ?? [],
         locationIds: locationIdsByItem.get(row.id) ?? [],
     }));
+}
 
-    return { items };
+/**
+ * Rebuilds an ItemCatalog from Postgres, optionally scoped to one location.
+ * @param locationId the location to scope the catalog to, or all items if omitted
+ * @param db the drizzle instance to query against
+ * @param scope which rows to see; defaults to every non-archived item
+ * @returns the item catalog for the given location
+ */
+export async function getCatalogByLocation(
+    locationId?: string,
+    db: TDrizzleDB = drizzleDB,
+    scope: CatalogScope = {},
+): Promise<ItemCatalog> {
+    const conditions: (SQL | undefined)[] = [
+        scope.includeArchived
+            ? undefined
+            : eq(catalogItemsTable.isArchived, false),
+        scope.origin ? eq(catalogItemsTable.origin, scope.origin) : undefined,
+    ];
+
+    if (locationId) {
+        const locationRows = await db
+            .select({ itemId: catalogItemLocationsTable.itemId })
+            .from(catalogItemLocationsTable)
+            .where(eq(catalogItemLocationsTable.locationId, locationId));
+        if (locationRows.length === 0) return { items: [] };
+        conditions.push(
+            inArray(
+                catalogItemsTable.id,
+                locationRows.map((row) => row.itemId),
+            ),
+        );
+    }
+
+    const itemRows = await db
+        .select()
+        .from(catalogItemsTable)
+        .where(and(...conditions));
+
+    return { items: await hydrateItems(itemRows, scope, db) };
 }
 
 /**
@@ -314,8 +373,10 @@ function itemMatches(item: Item, text: string): boolean {
 }
 
 /**
- * The persisted catalog as a LocalStore, wrapping the item/category/variation
- * tables above rather than a single table. "Removing" an item archives it, so
+ * The provider-synced catalog as a LocalStore, wrapping the item/category/
+ * variation tables above rather than a single table. Items created locally
+ * (origin "local") are invisible to it, so a provider sync can neither
+ * overwrite nor archive them. "Removing" an item archives it, so
  * historical orders still resolve. Listing reads the whole catalog (as the
  * Redis refresh does) and pages in memory, ordered by id.
  */
@@ -326,7 +387,11 @@ export const catalogStore: LocalStore<Item> = {
         const { text, limit, cursor, where } = options;
         if (where) throw new Error("catalogStore.list does not support where");
         const needle = text?.toLowerCase();
-        const items = (await getCatalogByLocation()).items
+        const items = (
+            await getCatalogByLocation(undefined, drizzleDB, {
+                origin: "synced",
+            })
+        ).items
             .filter((item) => !needle || itemMatches(item, needle))
             .filter((item) => !cursor || item.id > cursor)
             .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
@@ -338,9 +403,11 @@ export const catalogStore: LocalStore<Item> = {
     },
 
     async get(id) {
-        const [item] = (await getCatalogByLocation()).items.filter(
-            (candidate) => candidate.id === id,
-        );
+        const [item] = (
+            await getCatalogByLocation(undefined, drizzleDB, {
+                origin: "synced",
+            })
+        ).items.filter((candidate) => candidate.id === id);
         return item ?? null;
     },
 
@@ -359,6 +426,7 @@ export const catalogStore: LocalStore<Item> = {
             .where(
                 and(
                     eq(catalogItemsTable.id, id),
+                    eq(catalogItemsTable.origin, "synced"),
                     eq(catalogItemsTable.isArchived, false),
                 ),
             )

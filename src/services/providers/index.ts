@@ -4,6 +4,7 @@ import { squareProvider } from "./square";
 import { localProvider } from "./local";
 import type {
     CatalogProvider,
+    CatalogWriteProvider,
     CustomerProvider,
     PaymentProvider,
     DevicePairingProvider,
@@ -13,7 +14,8 @@ import type {
 export type ActiveProvider = CatalogProvider &
     PaymentProvider &
     DevicePairingProvider &
-    CustomerProvider;
+    CustomerProvider &
+    Partial<CatalogWriteProvider>;
 
 const providers: Record<ProviderId, ActiveProvider> = {
     square: squareProvider,
@@ -25,11 +27,13 @@ export const providerInfo: Record<ProviderId, ProviderInfo> = {
         id: "square",
         requiresTerminalDevice: true,
         canManageStorefronts: false,
+        canManageCatalog: false,
     },
     local: {
         id: "local",
         requiresTerminalDevice: false,
         canManageStorefronts: true,
+        canManageCatalog: true,
     },
 };
 
@@ -66,6 +70,25 @@ export function getActiveProviderId(): ProviderId {
  */
 export function getActiveProvider(): ActiveProvider {
     return providers[activeId];
+}
+
+/**
+ * @returns the active provider's catalog writes, or null when it does not
+ * own its catalog (Square) and the catalog is read-only here
+ */
+export function getCatalogWriter(): CatalogWriteProvider | null {
+    const provider = getActiveProvider();
+    if (!providerInfo[activeId].canManageCatalog) return null;
+    return provider.createItem ? (provider as CatalogWriteProvider) : null;
+}
+
+/**
+ * Which catalog rows the active provider shows. Local items stay in the
+ * database when Square is active, but only Square-synced rows are shown.
+ * @returns the scope to read the catalog with
+ */
+export function visibleCatalogScope(): { origin?: "synced" } {
+    return providerInfo[activeId].canManageCatalog ? {} : { origin: "synced" };
 }
 
 /**

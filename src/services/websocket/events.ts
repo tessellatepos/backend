@@ -4,6 +4,7 @@ import EventEmitter from "node:events";
  * Events fanned out to WebSocket clients. `locationId` is the order's
  * location when the emitter knows it: clients pinned to other locations do
  * not receive the event. Without it, any principal with `orders:read` does.
+ * `catalog_updated` needs `catalog:read` instead, and tells tills to refetch.
  */
 export type DatabaseEvent =
     | {
@@ -14,7 +15,11 @@ export type DatabaseEvent =
           type: "order_updated";
           payload: { orderId: string; locationId?: string };
       }
-    | { type: "device_paired"; payload: { deviceId: string } };
+    | { type: "device_paired"; payload: { deviceId: string } }
+    | {
+          type: "catalog_updated";
+          payload: { locationId?: string };
+      };
 
 export type PaymentStatusEvent = {
     type: "payment_status";

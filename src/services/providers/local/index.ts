@@ -17,8 +17,19 @@ import { getCatalogByLocation } from "@/services/db/catalog";
 import { customerStore, searchCustomers } from "@/services/db/customers";
 import { getLocations } from "@/services/db/locations";
 import { getOrderById, rowToOrder } from "@/services/db/orders";
+import {
+    createCategory,
+    createItem,
+    deleteCategory,
+    deleteItemHard,
+    setItemArchived,
+    updateCategory,
+    updateItem,
+} from "@/services/db/catalogManage";
+import { importCatalogCsv } from "@/services/db/catalogImport";
 import type {
     CatalogProvider,
+    CatalogWriteProvider,
     CustomerProvider,
     PaymentProvider,
 } from "../types";
@@ -345,8 +356,17 @@ async function fetchCustomers(): Promise<Customer[]> {
 }
 
 export const localProvider: CatalogProvider &
+    CatalogWriteProvider &
     PaymentProvider &
     CustomerProvider = {
+    createItem,
+    updateItem,
+    archiveItem: setItemArchived,
+    deleteItem: deleteItemHard,
+    createCategory,
+    updateCategory,
+    deleteCategory,
+    importCatalog: importCatalogCsv,
     listCustomers,
     getCustomer,
     createCustomer,

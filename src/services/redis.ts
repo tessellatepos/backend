@@ -267,3 +267,23 @@ export const getItemsByLocationID = async (
         return [];
     }
 };
+
+/**
+ * Replaces the whole item cache with `items`, dropping entries for items that
+ * were archived, deleted or are no longer shown (setItemsByLocationID only
+ * adds).
+ * @param items every item the till should currently see
+ */
+export const rebuildItemCache = async (items: Item[]): Promise<void> => {
+    if (!redis) redis = await getRedisClient();
+    const client = redis!;
+    const stale: string[] = [];
+    for await (const keys of client.scanIterator({
+        MATCH: "square:item*",
+        COUNT: 200,
+    })) {
+        stale.push(...(Array.isArray(keys) ? keys : [keys]));
+    }
+    if (stale.length > 0) await client.del(stale);
+    await setItemsByLocationID(items);
+};

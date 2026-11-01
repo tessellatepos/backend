@@ -23,7 +23,11 @@ import {
 } from "@/services/db/locations";
 import { isAuthorized } from "@/services/squareOauth";
 import { getActiveProviderId } from "@/services/providers";
-import { clearSetupToken, setupTokenMatches } from "@/services/setupToken";
+import {
+    clearSetupToken,
+    isSetupTokenRequired,
+    setupTokenMatches,
+} from "@/services/setupToken";
 
 /** Which first-run steps are done, derived from the database. */
 export interface SetupSteps {
@@ -135,7 +139,7 @@ export async function getSetupStatus(): Promise<SetupStatus> {
         ]);
     return {
         needsSetup: !complete,
-        setupTokenRequired: users === 0,
+        setupTokenRequired: users === 0 && isSetupTokenRequired(),
         provider,
         squareConnected,
         steps: {
@@ -189,7 +193,8 @@ export function parseOwnerInput(
 /**
  * Checks a setup token without creating anything, so the wizard can reject a
  * wrong token before the owner form is filled in. Same checks, in the same
- * order, as {@link createOwner} before it reads the form.
+ * order, as {@link createOwner} before it reads the form. Succeeds without a
+ * token when SETUP_TOKEN is unset.
  * @param token the setup token the caller supplied
  * @throws SetupError 403 (wrong or missing token), 409 (user exists / complete)
  */
@@ -203,7 +208,7 @@ export async function verifySetupToken(token: unknown): Promise<void> {
     }
     if (await hasUsers())
         throw new SetupError(409, "An owner already exists", "USER_EXISTS");
-    if (!setupTokenMatches(token)) {
+    if (isSetupTokenRequired() && !setupTokenMatches(token)) {
         throw new SetupError(403, "Invalid setup token", "BAD_TOKEN");
     }
 }
@@ -234,7 +239,7 @@ export async function createOwner(
     }
     if (await hasUsers())
         throw new SetupError(409, "An owner already exists", "USER_EXISTS");
-    if (!setupTokenMatches(token)) {
+    if (isSetupTokenRequired() && !setupTokenMatches(token)) {
         throw new SetupError(403, "Invalid setup token");
     }
     const auth = getAuth();

@@ -15,6 +15,7 @@ import { rebuildAuth } from "@/services/authProviders";
 import { hasUsers } from "@/services/setup";
 import { initActiveProvider } from "@/services/providers";
 import { initSetupToken } from "@/services/setupToken";
+import { runDevSeed } from "@/services/devSeed";
 
 const app = createApp();
 
@@ -48,7 +49,12 @@ async function start() {
         // a sign-in method.
         await rebuildAuth();
 
-        // Gate first-run owner creation behind a one-time token (logged once).
+        // Development only (DEV_SEED=true): on an empty instance, create the
+        // admin/password owner and a test store. Runs before the setup token
+        // is decided, and refuses itself under production or a SETUP_TOKEN.
+        await runDevSeed(process.env);
+
+        // The owner step needs a token only when SETUP_TOKEN is set.
         initSetupToken(!(await hasUsers()));
 
         // Renew the stored Square token before anything tries to use it. A

@@ -57,6 +57,13 @@
       "when": 1793473186892,
       "tag": "0007_local_device_type",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793475034344,
+      "tag": "0008_catalog_origin",
+      "breakpoints": true
     }
   ]
 }

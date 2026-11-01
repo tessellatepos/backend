@@ -1,33 +1,32 @@
-import { randomBytes } from "node:crypto";
 import { Logger } from "tslog";
 import { safeEqual } from "@/services/crypto";
 import { FixedWindowLimiter } from "@/utils/rateLimiter";
 
 const logger = new Logger();
 
-/** Held only in memory; never persisted, returned by an API, or re-logged. */
+/**
+ * The token the owner step must present. Held only in memory and never
+ * returned by an API or logged. Null when SETUP_TOKEN is unset, and then the
+ * owner step needs no token.
+ */
 let setupToken: string | null = null;
 
 /**
- * Decides whether this process needs a setup token and, if so, creates it
- * (or takes SETUP_TOKEN from the environment) and prints it once. Call at
- * startup. A restart while setup is incomplete yields a new random token.
+ * Takes the setup token from SETUP_TOKEN when it is set and no user exists
+ * yet. Unset means nothing is generated, printed or required. Call at startup.
  * @param needsToken true while no user exists yet
- * @returns true when a token is now active
+ * @returns true when a token is now required
  */
 export function initSetupToken(needsToken: boolean): boolean {
     setupToken = null;
-    if (!needsToken) return false;
-    setupToken =
-        process.env.SETUP_TOKEN?.trim() || randomBytes(18).toString("hex");
-    const fromEnv = Boolean(process.env.SETUP_TOKEN?.trim());
+    const fromEnv = process.env.SETUP_TOKEN?.trim();
+    if (!needsToken || !fromEnv) return false;
+    setupToken = fromEnv;
     logger.info(
         [
             "",
             "==================== FIRST-RUN SETUP ====================",
-            fromEnv
-                ? "Setup token: (taken from SETUP_TOKEN)"
-                : `Setup token: ${setupToken}`,
+            "Setup token: (taken from SETUP_TOKEN)",
             "Enter it in the setup wizard to create the owner account.",
             "=========================================================",
         ].join("\n"),
@@ -38,6 +37,15 @@ export function initSetupToken(needsToken: boolean): boolean {
 /** Forgets the token, once the owner exists. */
 export function clearSetupToken(): void {
     setupToken = null;
+}
+
+/**
+ * Whether the owner step requires a token: SETUP_TOKEN is set and no owner
+ * has been created yet.
+ * @returns true when a token must be presented
+ */
+export function isSetupTokenRequired(): boolean {
+    return setupToken !== null;
 }
 
 /**
