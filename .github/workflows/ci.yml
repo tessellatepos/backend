@@ -1,0 +1,46 @@
+name: CI
+
+on:
+    pull_request:
+    push:
+        branches: [main]
+
+jobs:
+    check:
+        runs-on: ubuntu-latest
+        env:
+            HUSKY: 0
+            # The install above already ran; skip pnpm's repeat check, which would re-apply the age policy.
+            pnpm_config_verify_deps_before_run: false
+            DATABASE_URL: postgres://tessellate_user:tessellate_pass@localhost:5432/tessellate_test
+            REDIS_URL: redis://localhost:6379/7
+        services:
+            postgres:
+                image: postgres:15-alpine
+                env:
+                    POSTGRES_USER: tessellate_user
+                    POSTGRES_PASSWORD: tessellate_pass
+                    POSTGRES_DB: tessellate_test
+                ports: ["5432:5432"]
+                options: >-
+                    --health-cmd "pg_isready -U tessellate_user"
+                    --health-interval 5s --health-timeout 5s --health-retries 10
+            redis:
+                image: redis:7-alpine
+                ports: ["6379:6379"]
+                options: >-
+                    --health-cmd "redis-cli ping"
+                    --health-interval 5s --health-timeout 5s --health-retries 10
+        steps:
+            - uses: actions/checkout@v7
+            - uses: pnpm/setup@v2
+              with:
+                  version: 11.24.0
+                  runtime: node@26
+                  require-lockfile: true
+                  install: false
+                  cache: true
+            - run: pnpm install --frozen-lockfile --ignore-scripts '--config.minimumReleaseAgeExclude=@tessellatepos/*'
+            - run: pnpm lint
+            - run: pnpm run build
+            - run: pnpm test

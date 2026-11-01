@@ -10,5 +10,4 @@ build
 .DS_Store
 .env*
 .npmrc
-package-lock.json
 Dockerfile

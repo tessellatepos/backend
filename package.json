@@ -21,8 +21,8 @@
     },
     "dependencies": {
         "@origranot/ts-logger": "^1.12.0",
-        "@tessellatepos/plugin-sdk": "workspace:*",
-        "@tessellatepos/sdk": "workspace:*",
+        "@tessellatepos/plugin-sdk": "0.0.2-alpha2",
+        "@tessellatepos/sdk": "0.0.2-alpha",
         "@types/express": "^5.0.6",
         "better-auth": "^1.7.2",
         "cors": "^2.8.6",

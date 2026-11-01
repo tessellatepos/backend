@@ -1,15 +1,18 @@
-FROM node:24-alpine AS builder
+FROM node:26-alpine AS builder
+RUN npm install -g pnpm@11.24.0
 WORKDIR /app
 
-COPY package.json ./
-RUN npm install --ignore-scripts --legacy-peer-deps
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml* ./
+# The just-published sdk packages are younger than pnpm's release-age policy; drop these once they are a day old.
+ENV pnpm_config_verify_deps_before_run=false
+RUN pnpm install --frozen-lockfile --ignore-scripts '--config.minimumReleaseAgeExclude=@tessellatepos/*'
 
 COPY tsconfig.json ./
 COPY src ./src
-RUN npm run build
-RUN npm prune --omit=dev
+RUN pnpm run build
+RUN pnpm prune --prod --ignore-scripts '--config.minimumReleaseAgeExclude=@tessellatepos/*'
 
-FROM node:24-alpine AS production
+FROM node:26-alpine AS production
 ENV NODE_ENV=production
 WORKDIR /app
 
