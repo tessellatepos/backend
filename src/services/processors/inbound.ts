@@ -1,15 +1,11 @@
 import { Logger } from "tslog";
 import type { Request, Response } from "express";
 import { parseMoney } from "@tessellatepos/sdk";
-import type {
-    InvoiceStatus,
-    OnlinePaymentStatus,
-    ProcessorEvent,
-} from "@tessellatepos/sdk";
+import type { InvoiceStatus, ProcessorEvent } from "@tessellatepos/sdk";
 import { getRedisClient } from "@/services/redis";
 import {
     findOnlinePayment,
-    setOnlinePaymentStatus,
+    applyCheckoutStatus,
 } from "@/services/db/onlinePayments";
 import { onlinePaymentsAvailable, webhookUrl } from "@/config/urls";
 import type { TessellatePluginRegistry } from "@/utils/registry/plugin/pluginRegistry";
@@ -121,13 +117,9 @@ export async function applyProcessorEvents(
             }
         }
 
-        const next: OnlinePaymentStatus = event.status;
-        // A paid attempt only moves on to refunded, so a late "expired" or
-        // "failed" from an out-of-order event cannot undo it.
-        const keep =
-            attempt.status === next ||
-            (attempt.status === "paid" && next !== "refunded");
-        if (!keep) await setOnlinePaymentStatus(attempt.id, next);
+        // Out-of-order events cannot undo a paid or refunded attempt; the
+        // rules and the row lock are in applyCheckoutStatus.
+        await applyCheckoutStatus(attempt.id, event.status);
         await markSeen(processorId, event.id);
     }
 }
