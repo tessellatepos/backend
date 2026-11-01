@@ -7,6 +7,7 @@ import type {
 } from "@tessellatepos/plugin-sdk/server";
 import { Logger } from "tslog";
 import { TessellatePluginDatabaseRegistry } from "@/utils/registry/database/pluginDatabaseRegistry";
+import { authProviders } from "@/auth/providers";
 
 const logger = new Logger();
 
@@ -29,6 +30,21 @@ export class TessellatePluginRegistry {
             throw new Error(`Duplicate plugins detected for name: ${name}`, {
                 cause: plugin,
             });
+        }
+
+        // Sign-in methods first: an id clash with another plugin refuses the
+        // whole plugin before anything else of it is mounted.
+        try {
+            for (const provider of plugin.get("auth")) {
+                authProviders.register({
+                    pluginName: name,
+                    authRoles: plugin.getManifest().tessellate.authRoles ?? [],
+                    provider,
+                });
+            }
+        } catch (err) {
+            authProviders.removePlugin(name);
+            throw err;
         }
 
         this.plugins.set(name, plugin);

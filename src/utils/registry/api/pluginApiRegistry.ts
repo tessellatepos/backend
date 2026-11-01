@@ -6,6 +6,7 @@ import type {
     PluginApiMethod,
     PluginApiRequest,
 } from "@tessellatepos/plugin-sdk";
+import type { Principal } from "@tessellatepos/sdk";
 import type { PluginServerContext } from "@tessellatepos/plugin-sdk/server";
 import { activeProvider } from "@/services/providers";
 import { getItemById } from "@/services/redis";
@@ -27,6 +28,7 @@ interface RegisteredRoute {
 function buildPluginServerContext(
     pluginName: string,
     databaseRegistry: TessellatePluginDatabaseRegistry,
+    principal: Principal | null,
 ): PluginServerContext {
     return {
         db: databaseRegistry.getRepository(pluginName),
@@ -34,6 +36,7 @@ function buildPluginServerContext(
             deviceId: "",
             locationId: "",
         },
+        principal,
         getOrder: async (orderId: string) => {
             try {
                 const order = await activeProvider.fetchOrder(orderId);
@@ -101,6 +104,7 @@ export class TessellatePluginApiRegistry {
             const ctx = buildPluginServerContext(
                 route.pluginName,
                 this.databaseRegistry,
+                req.principal ?? null,
             );
 
             try {

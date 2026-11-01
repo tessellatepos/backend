@@ -8,7 +8,7 @@
         "dev": "tsx src/server.ts --watch",
         "build": "tsc && tsc-alias",
         "start": "node dist/server.js",
-        "test": "node --import tsx --test test/*.test.ts",
+        "test": "node --import tsx --import ./test/helpers/env.ts --test test/*.test.ts",
         "lint": "prettier . && eslint .",
         "lint:fix": "prettier . --write && eslint . --fix",
         "test": "node --import tsx --test --test-concurrency=1 \"src/**/*.test.ts\"",

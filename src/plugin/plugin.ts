@@ -6,15 +6,18 @@ import {
     PluginUIMountDefinition,
 } from "@tessellatepos/plugin-sdk";
 import type {
+    AuthProvider,
     HookDefinition,
     HookResult,
     EventDefinition,
 } from "@tessellatepos/plugin-sdk/server";
+import { validateAuthProvider } from "@/auth/providers";
 
 interface PluginMounts {
     ui: PluginUIMountDefinition[];
     api: PluginApiMountDefinition[];
     database: PluginDatabaseMount[];
+    auth: AuthProvider[];
 }
 
 type HookHandler = (...args: unknown[]) => unknown;
@@ -23,7 +26,7 @@ type EventHandler = (...args: unknown[]) => void;
 export class Plugin {
     protected manifest: PluginManifest;
     protected permissions: PluginPermissionProvider;
-    private mounts: PluginMounts = { ui: [], api: [], database: [] };
+    private mounts: PluginMounts = { ui: [], api: [], database: [], auth: [] };
     private hookHandlers: Map<string, HookHandler[]> = new Map();
     private eventListeners: Map<string, EventHandler[]> = new Map();
 
@@ -37,10 +40,26 @@ export class Plugin {
 
     // ── Mounts ──
 
+    /**
+     * Adds a mount. Registering an `auth` provider needs the AUTH permission
+     * and a valid provider; otherwise this throws, so the plugin fails to
+     * load.
+     * @param kind which kind of mount
+     * @param mount the mount definition
+     * @throws AuthProviderError for an `auth` mount that is not allowed or
+     * not valid
+     */
     public register<K extends keyof PluginMounts>(
         kind: K,
         mount: PluginMounts[K][number],
     ) {
+        if (kind === "auth") {
+            validateAuthProvider(
+                this.manifest.name,
+                this.permissions.auth,
+                mount,
+            );
+        }
         (this.mounts[kind] as PluginMounts[K][number][]).push(mount);
     }
 

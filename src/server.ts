@@ -13,10 +13,14 @@ import { routes } from "@/utils/registry/api/routes";
 import { TessellateApiRegistry } from "@/utils/registry/api/apiRegistry";
 import { TessellatePluginRegistry } from "@/utils/registry/plugin/pluginRegistry";
 import { loadPlugins } from "@/plugin/lifecycle/lifecycleManager";
+import { rebuildAuth } from "@/services/authProviders";
+import { hasUsers } from "@/services/setup";
+import { initSetupToken } from "@/services/setupToken";
 import { urlConfig } from "@/config/urls";
 import { hostGuard } from "@/middleware/hostGuard";
 import { surfaceMiddleware } from "@/middleware/surface";
 import { surfaceCors } from "@/middleware/cors";
+import { authenticate } from "@/middleware/authenticate";
 
 const app = express();
 app.set("trust proxy", urlConfig.trustProxy);
@@ -25,6 +29,8 @@ app.use(hostGuard());
 app.use(surfaceMiddleware);
 app.use(surfaceCors());
 app.use(express.json());
+// Resolves req.principal; guards (requireScope) decide what to reject.
+app.use(authenticate);
 
 // Public, minimal liveness probe. Reachable on the public host.
 app.get("/health", (_req, res) => {
@@ -57,6 +63,14 @@ async function start() {
         }
 
         await runMigrations();
+
+        // Built after plugins load and migrations run, so the tables exist
+        // and plugin contributions are known. Rebuilt when the owner changes
+        // a sign-in method.
+        await rebuildAuth();
+
+        // Gate first-run owner creation behind a one-time token (logged once).
+        initSetupToken(!(await hasUsers()));
 
         // Renew the stored Square token before anything tries to use it. A
         // failure here isn't fatal — the deployment may not be connected yet.

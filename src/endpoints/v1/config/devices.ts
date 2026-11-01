@@ -9,6 +9,7 @@ import {
     deleteConfigDevice,
     getConfigDeviceByID,
     getAllConfigDevices,
+    withoutTokenHash,
 } from "@/services/db/configDevice";
 import { type IConfigDevice } from "@tessellatepos/sdk";
 import { getParamValue } from "@/utils/expressHelpers";
@@ -28,7 +29,7 @@ export const configDevicev1Endpoint: ITessellateApiRouter = {
 configDeviceRouter.get("/", async (req, res) => {
     logger.info("Received GET request for all device configurations");
     const configSystems = await getAllConfigDevices();
-    res.json(configSystems);
+    res.json(configSystems.map(withoutTokenHash));
 });
 
 configDeviceRouter.get("/pair-device/", async (req: Request, res: Response) => {
@@ -165,7 +166,7 @@ configDeviceRouter.get("/:deviceId", async (req: Request, res: Response) => {
 
     logger.info(`Received GET request for device ID: ${deviceId}`);
     const config = await getConfigDeviceByID(deviceId);
-    res.json(config);
+    res.json(config && withoutTokenHash(config));
 });
 
 configDeviceRouter.post("/:deviceId", async (req: Request, res: Response) => {
@@ -181,7 +182,8 @@ configDeviceRouter.post("/:deviceId", async (req: Request, res: Response) => {
     logger.info(
         `Received POST request for device ID: ${deviceId} with body: ${JSON.stringify(req.body)}`,
     );
-    const updatedConfig = req.body as IConfigDevice;
+    // Never let a request body set or clear the device token hash.
+    const updatedConfig = withoutTokenHash(req.body as IConfigDevice);
     await updateConfigDevice(deviceId, updatedConfig);
     res.json(updatedConfig);
 });
