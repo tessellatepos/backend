@@ -226,6 +226,28 @@ export function webhookUrl(
 }
 
 /**
+ * @param config the configuration to use
+ * @returns PUBLIC_URL's origin, or null when unset
+ */
+export function getPublicUrl(config: UrlConfig = urlConfig): string | null {
+    return config.publicUrl;
+}
+
+/**
+ * Whether online payments and online-store features can work. Processors
+ * redirect shoppers back to this host and post signed webhooks to it, and
+ * Square only delivers webhooks to HTTPS endpoints, so plain http (including
+ * localhost) does not qualify even though PUBLIC_URL accepts it.
+ * @param config the configuration to use
+ * @returns true when PUBLIC_URL is set to an https address
+ */
+export function onlinePaymentsAvailable(
+    config: UrlConfig = urlConfig,
+): boolean {
+    return config.publicUrl?.startsWith("https://") ?? false;
+}
+
+/**
  * Whether a hostname is the PUBLIC_URL host.
  * @param hostname bare hostname
  * @param config the configuration to use

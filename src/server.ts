@@ -1,5 +1,7 @@
 import { createApp, mountApiRoutes } from "@/app";
 import { startWebhookWorker } from "@/gateway/webhooks/worker";
+import { startOrderExpiryWorker } from "@/gateway/orderExpiry";
+import { startInvoiceOverdueWorker } from "@/gateway/invoiceOverdue";
 import { getRedisClient } from "@/services/redis";
 import { pool, runMigrations } from "@/services/db/postgres";
 import {
@@ -17,6 +19,7 @@ import { hasUsers } from "@/services/setup";
 import { initActiveProvider } from "@/services/providers";
 import { initSetupToken } from "@/services/setupToken";
 import { runDevSeed } from "@/services/devSeed";
+import { registerBuiltinProcessors } from "@/services/processors/builtin";
 
 const app = createApp();
 
@@ -75,6 +78,8 @@ async function start() {
         }
         startCatalogSyncInterval();
 
+        registerBuiltinProcessors();
+
         // register all the routes in routes.ts and load them all in.
         // This process should be the last thing before the server loads
         // to ensure that plugin routes are loaded
@@ -89,6 +94,10 @@ async function start() {
         });
         // Retries outbound gateway webhooks; stopped on shutdown.
         const stopWebhookWorker = startWebhookWorker();
+        // Cancels online orders left unpaid past the expiry window.
+        const stopOrderExpiry = startOrderExpiryWorker(pluginRegistry);
+        // Marks unpaid invoices overdue once their due date and grace pass.
+        const stopInvoiceOverdue = startInvoiceOverdueWorker(pluginRegistry);
 
         let shuttingDown = false;
         const shutdown = async (signal: NodeJS.Signals) => {
@@ -97,6 +106,8 @@ async function start() {
             logger.info(`Received ${signal}, shutting down...`);
 
             stopWebhookWorker();
+            stopOrderExpiry();
+            stopInvoiceOverdue();
             await new Promise<void>((resolve) =>
                 httpServer.close(() => resolve()),
             );

@@ -3,11 +3,13 @@
  * location rule, the in-process call and response validation. Every error
  * leaves in the gateway's `{ message, code }` shape.
  */
+import { createHash } from "node:crypto";
 import type { Request, RequestHandler, Response } from "express";
 import { Logger } from "tslog";
 import { bigintReplacer } from "@tessellatepos/sdk";
 import type { GatewayEntry } from "@/gateway/registry";
 import { invokeEntry, type CapturedResponse } from "@/gateway/invoke";
+import { GUARDED_CREATE_OPERATION, guardedCreate } from "@/gateway/createGuard";
 import {
     decideLocation,
     gatewayAudit,
@@ -48,6 +50,21 @@ function messageOf(body: unknown, status: number): string {
     return status >= 500 ? "Internal error" : "Request failed";
 }
 
+const CODE_PATTERN = /^[a-z][a-z0-9_]{1,63}$/;
+
+/**
+ * A code a handler chose on purpose (`{ message, code }`). Handlers without
+ * one fall back to the generic code for their status.
+ * @param body the handler's JSON body
+ * @returns the code, or undefined
+ */
+function handlerCode(body: unknown): string | undefined {
+    const code = (body as { code?: unknown } | null)?.code;
+    return typeof code === "string" && CODE_PATTERN.test(code)
+        ? code
+        : undefined;
+}
+
 function parseIfJson(body: unknown): unknown {
     if (typeof body !== "string") return body;
     try {
@@ -58,21 +75,46 @@ function parseIfJson(body: unknown): unknown {
 }
 
 /**
+ * Whether an `If-None-Match` header names the current ETag. Weak and strong
+ * forms compare equal, as the spec says for this header.
+ * @param header the request header
+ * @param etag the ETag of the answer about to be sent
+ * @returns true when the caller already holds this answer
+ */
+function matchesEtag(header: string | undefined, etag: string): boolean {
+    if (!header) return false;
+    const strip = (tag: string) => tag.trim().replace(/^W\//, "");
+    return header.split(",").some((tag) => {
+        const candidate = strip(tag);
+        return candidate === "*" || candidate === etag;
+    });
+}
+
+/**
  * Turns a captured internal answer into the gateway's answer.
+ * @param req the gateway request
  * @param res the gateway response
  * @param entry the operation that produced it
  * @param result what the handler answered
  */
-function relay(res: Response, entry: GatewayEntry, result: CapturedResponse) {
+function relay(
+    req: Request,
+    res: Response,
+    entry: GatewayEntry,
+    result: CapturedResponse,
+) {
     if (result.status >= 400) {
-        // Internal failures keep their status; 5xx is always generic.
+        // Internal failures keep their status. A 5xx is generic unless the
+        // handler named a code, which only a deliberate refusal does.
+        const code = handlerCode(parseIfJson(result.body));
+        const generic = result.status >= 500 && !code;
         sendGatewayError(
             res,
             result.status,
-            codeFor(result.status),
-            result.status >= 500
+            code ?? codeFor(result.status),
+            generic
                 ? "Internal error"
-                : messageOf(result.body, result.status),
+                : messageOf(parseIfJson(result.body), result.status),
         );
         return;
     }
@@ -88,9 +130,24 @@ function relay(res: Response, entry: GatewayEntry, result: CapturedResponse) {
         sendGatewayError(res, 500, "internal_error", "Internal error");
         return;
     }
+    const body = JSON.stringify(parsed.data, bigintReplacer);
+    if (entry.cacheSeconds !== undefined && result.status === 200) {
+        const etag = `"${createHash("sha256").update(body).digest("base64url").slice(0, 27)}"`;
+        // The body depends on the credential's locations, so a shared cache
+        // must not serve it to another credential.
+        res.set("ETag", etag).set(
+            "Cache-Control",
+            `private, max-age=${entry.cacheSeconds}`,
+        );
+        res.vary("Authorization");
+        if (matchesEtag(req.headers["if-none-match"], etag)) {
+            res.status(304).end();
+            return;
+        }
+    }
     res.status(result.status)
         .set("Content-Type", "application/json")
-        .send(JSON.stringify(parsed.data, bigintReplacer));
+        .send(body);
 }
 
 /**
@@ -154,13 +211,18 @@ function runOperation(entry: GatewayEntry): RequestHandler {
         }
 
         const internal = entry.toInternal ? entry.toInternal(payload) : payload;
-        try {
-            const result = await invokeEntry(entry, req, {
+        const call = () =>
+            invokeEntry(entry, req, {
                 params,
                 query: isQuery ? internal : undefined,
                 body: isQuery ? undefined : internal,
             });
-            relay(res, entry, result);
+        try {
+            const result =
+                op.operationId === GUARDED_CREATE_OPERATION
+                    ? await guardedCreate(req, res, payload, call)
+                    : await call();
+            if (result) relay(req, res, entry, result);
         } catch (err) {
             logger.error(`Gateway operation ${op.operationId} failed`, err);
             sendGatewayError(res, 500, "internal_error", "Internal error");

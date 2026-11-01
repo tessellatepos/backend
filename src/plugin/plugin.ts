@@ -7,17 +7,21 @@ import {
 } from "@tessellatepos/plugin-sdk";
 import type {
     AuthProvider,
+    PaymentProcessor,
+    HookContext,
     HookDefinition,
     HookResult,
     EventDefinition,
 } from "@tessellatepos/plugin-sdk/server";
 import { validateAuthProvider } from "@/auth/providers";
+import { validatePaymentProcessor } from "@/services/processors/plugin";
 
 interface PluginMounts {
     ui: PluginUIMountDefinition[];
     api: PluginApiMountDefinition[];
     database: PluginDatabaseMount[];
     auth: AuthProvider[];
+    paymentProcessor: PaymentProcessor[];
 }
 
 type HookHandler = (...args: unknown[]) => unknown;
@@ -26,7 +30,13 @@ type EventHandler = (...args: unknown[]) => void;
 export class Plugin {
     protected manifest: PluginManifest;
     protected permissions: PluginPermissionProvider;
-    private mounts: PluginMounts = { ui: [], api: [], database: [], auth: [] };
+    private mounts: PluginMounts = {
+        ui: [],
+        api: [],
+        database: [],
+        auth: [],
+        paymentProcessor: [],
+    };
     private hookHandlers: Map<string, HookHandler[]> = new Map();
     private eventListeners: Map<string, EventHandler[]> = new Map();
 
@@ -46,8 +56,12 @@ export class Plugin {
      * load.
      * @param kind which kind of mount
      * @param mount the mount definition
+     * A `paymentProcessor` needs the PAYMENT permission and an id inside the
+     * plugin's namespace, likewise.
      * @throws AuthProviderError for an `auth` mount that is not allowed or
      * not valid
+     * @throws PaymentProcessorError for a `paymentProcessor` mount that is not
+     * allowed or not valid
      */
     public register<K extends keyof PluginMounts>(
         kind: K,
@@ -57,6 +71,13 @@ export class Plugin {
             validateAuthProvider(
                 this.manifest.name,
                 this.permissions.auth,
+                mount,
+            );
+        }
+        if (kind === "paymentProcessor") {
+            validatePaymentProcessor(
+                this.manifest.name,
+                this.permissions.payment,
                 mount,
             );
         }
@@ -82,6 +103,7 @@ export class Plugin {
         def: HookDefinition<TInput, TOutput>,
         handler: (
             input: TInput,
+            ctx: HookContext,
         ) => HookResult<TOutput> | Promise<HookResult<TOutput>>,
     ): void {
         const list = this.hookHandlers.get(def.name) ?? [];

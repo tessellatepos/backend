@@ -1,10 +1,11 @@
-import { CURRENCIES } from "@tessellatepos/sdk";
+import { CURRENCIES, SALES_CHANNELS } from "@tessellatepos/sdk";
 import type {
     CatalogFieldError,
     CurrencyCode,
     ItemCategoryInput,
     ItemQuery,
     Money,
+    SalesChannel,
 } from "@tessellatepos/sdk";
 
 /*
@@ -33,6 +34,8 @@ export interface VariationDraft {
     pricingType: "FIXED" | "VARIABLE";
     priceMoney: Money | null;
     trackInventory: boolean;
+    /** Absent follows the item's channels. */
+    channels?: SalesChannel[];
     locationOverrides: {
         locationId: string;
         priceMoney?: Money;
@@ -48,6 +51,7 @@ export interface ItemDraft {
     isTaxable: boolean;
     isArchived: boolean;
     image: string | null;
+    channels: SalesChannel[];
     categoryIds: string[];
     locationIds: string[];
     variations: VariationDraft[];
@@ -273,6 +277,7 @@ const VARIATION_KEYS = [
     "priceMoney",
     "trackInventory",
     "locationOverrides",
+    "channels",
 ] as const;
 const ITEM_KEYS = [
     "name",
@@ -281,6 +286,7 @@ const ITEM_KEYS = [
     "isTaxable",
     "isArchived",
     "image",
+    "channels",
     "categoryIds",
     "locationIds",
     "variations",
@@ -301,6 +307,37 @@ function readImageUrl(
     }
     c.add(path, "must be an http or https URL");
     return undefined;
+}
+
+/**
+ * Reads a channel set: known channels, no repeats, at least one.
+ * @param value the raw value
+ * @param path where the value sits in the body
+ * @param c the error collector
+ * @returns the channels, or undefined after recording an error
+ */
+function readChannels(
+    value: unknown,
+    path: string,
+    c: Collector,
+): SalesChannel[] | undefined {
+    if (
+        !Array.isArray(value) ||
+        value.length === 0 ||
+        value.length > SALES_CHANNELS.length
+    ) {
+        c.add(path, "must list at least one channel");
+        return undefined;
+    }
+    if (!value.every((v) => SALES_CHANNELS.includes(v as SalesChannel))) {
+        c.add(path, `must only contain ${SALES_CHANNELS.join(" or ")}`);
+        return undefined;
+    }
+    if (new Set(value).size !== value.length) {
+        c.add(path, "must not repeat a channel");
+        return undefined;
+    }
+    return value as SalesChannel[];
 }
 
 function readPricingType(
@@ -440,6 +477,9 @@ function readVariation(
                 ? false
                 : readBoolean(raw.trackInventory, `${path}.trackInventory`, c);
     }
+    if (raw.channels !== undefined) {
+        out.channels = readChannels(raw.channels, `${path}.channels`, c);
+    }
     if (raw.locationOverrides !== undefined) {
         out.locationOverrides = readOverrides(
             raw.locationOverrides,
@@ -470,6 +510,7 @@ export function finishVariation(
         pricingType: v.pricingType ?? "FIXED",
         priceMoney: v.priceMoney ?? null,
         trackInventory: v.trackInventory ?? false,
+        ...(v.channels ? { channels: v.channels } : {}),
         locationOverrides: v.locationOverrides ?? [],
     };
     if (draft.pricingType === "FIXED" && !draft.priceMoney) {
@@ -554,6 +595,10 @@ export function parseItemInput(body: unknown): Validated<ItemDraft> {
             : readBoolean(body.isArchived, "isArchived", c);
     const image =
         body.image === undefined ? null : readImageUrl(body.image, "image", c);
+    const channels =
+        body.channels === undefined
+            ? (["pos"] as SalesChannel[])
+            : readChannels(body.channels, "channels", c);
     const categoryIds =
         body.categoryIds === undefined
             ? []
@@ -588,6 +633,7 @@ export function parseItemInput(body: unknown): Validated<ItemDraft> {
             isTaxable: isTaxable!,
             isArchived: isArchived!,
             image: image ?? null,
+            channels: channels!,
             categoryIds: categoryIds!,
             locationIds: locationIds!,
             variations,
@@ -638,6 +684,9 @@ export function parseItemPatch(body: unknown): Validated<ItemPatch> {
     if (body.image !== undefined) {
         patch.image = readImageUrl(body.image, "image", c);
     }
+    if (body.channels !== undefined) {
+        patch.channels = readChannels(body.channels, "channels", c);
+    }
     if (body.categoryIds !== undefined) {
         patch.categoryIds = readIds(body.categoryIds, "categoryIds", c);
     }
@@ -664,6 +713,50 @@ export function parseItemPatch(body: unknown): Validated<ItemPatch> {
     }
     if (c.errors.length > 0) return { ok: false, errors: c.errors };
     return { ok: true, value: patch };
+}
+
+/** A body that sets channels on an item and, optionally, its variations. */
+export interface ChannelsChange {
+    channels: SalesChannel[];
+    /** By variation id; null makes the variation follow the item again. */
+    variations?: Record<string, SalesChannel[] | null>;
+}
+
+/**
+ * Validates the body of a channels-only change.
+ * @param body the parsed JSON body
+ * @returns the validated change, or the errors
+ */
+export function parseChannelsChange(body: unknown): Validated<ChannelsChange> {
+    const c = new Collector();
+    if (!isRecord(body)) {
+        return {
+            ok: false,
+            errors: [{ path: "(body)", message: "must be an object" }],
+        };
+    }
+    noUnknownKeys(body, ["channels", "variations"], "", c);
+    const channels = readChannels(body.channels, "channels", c);
+    let variations: ChannelsChange["variations"];
+    if (body.variations !== undefined) {
+        if (!isRecord(body.variations)) {
+            c.add("variations", "must be an object keyed by variation id");
+        } else {
+            variations = {};
+            for (const [id, value] of Object.entries(body.variations)) {
+                if (id.length > 255) {
+                    c.add("variations", "has an id that is too long");
+                } else if (value === null) {
+                    variations[id] = null;
+                } else {
+                    const read = readChannels(value, "variations", c);
+                    if (read) variations[id] = read;
+                }
+            }
+        }
+    }
+    if (c.errors.length > 0) return { ok: false, errors: c.errors };
+    return { ok: true, value: { channels: channels!, variations } };
 }
 
 /**

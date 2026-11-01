@@ -27,7 +27,7 @@ export type PaymentStatusEvent = {
         orderId: string;
         locationId?: string;
         status: "COMPLETED" | "FAILED";
-        paymentMethod: "MOBILE_READER" | "TERMINAL" | "CASH";
+        paymentMethod: "MOBILE_READER" | "TERMINAL" | "CASH" | "ONLINE";
         paymentId?: string;
     };
 };

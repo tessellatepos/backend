@@ -53,6 +53,7 @@ export function makeItem(
         isTaxable: true,
         isArchived: false,
         image: null,
+        channels: ["pos"],
         variations: [
             {
                 itemId: `${id}-v`,

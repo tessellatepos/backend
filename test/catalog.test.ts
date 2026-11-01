@@ -1083,7 +1083,7 @@ describe("catalog management", () => {
             assert.equal(first.status, 200);
             assert.match(first.headers.get("content-type") ?? "", /text\/csv/);
             const lines = first.text.split("\r\n");
-            assert.equal(lines[0], header);
+            assert.equal(lines[0], `${header},channels,variation channels`);
             assert.ok(first.text.includes(`Mocha ${suffix}`));
             assert.ok(
                 first.text.includes(`'=HYPERLINK`),
@@ -1134,6 +1134,257 @@ describe("catalog management", () => {
                     .name,
                 `=HYPERLINK("x") ${suffix}`,
             );
+        });
+    });
+
+    describe("channels", () => {
+        after(async () => {
+            const mine = `SELECT id FROM "tessellate-catalog-items" WHERE name LIKE $1`;
+            const like = [`Chan% ${suffix}`];
+            for (const table of [
+                "tessellate-catalog-item-variations",
+                "tessellate-catalog-item-categories",
+                "tessellate-catalog-item-locations",
+            ]) {
+                await pool.query(
+                    `DELETE FROM "${table}" WHERE item_id IN (${mine})`,
+                    like,
+                );
+            }
+            await pool.query(
+                `DELETE FROM "tessellate-catalog-items" WHERE name LIKE $1`,
+                like,
+            );
+        });
+
+        const variationIds = (item: Item) =>
+            (item.variations ?? []).map((v) => v.id as string);
+
+        it("defaults to pos, and a variation follows its item", async () => {
+            const res = await api("POST", "/items", {
+                json: itemBody(`ChanDefault ${suffix}`),
+            });
+            assert.equal(res.status, 201, res.text);
+            assert.deepEqual(res.body.channels, ["pos"]);
+            assert.ok(
+                res.body.variations.every(
+                    (v: { channels?: string[] }) => v.channels === undefined,
+                ),
+            );
+        });
+
+        it("stores channels on create, replace and patch", async () => {
+            const created = await api("POST", "/items", {
+                json: itemBody(`ChanOn ${suffix}`, {
+                    channels: ["pos", "online"],
+                }),
+            });
+            assert.equal(created.status, 201, created.text);
+            assert.deepEqual(created.body.channels, ["pos", "online"]);
+
+            const [small, large] = variationIds(created.body);
+            const patched = await api("PATCH", `/items/${created.body.id}`, {
+                json: {
+                    variations: [
+                        { id: small, channels: ["pos"] },
+                        { id: large },
+                    ],
+                },
+            });
+            assert.equal(patched.status, 200, patched.text);
+            assert.deepEqual(patched.body.channels, ["pos", "online"]);
+            assert.deepEqual(patched.body.variations[0].channels, ["pos"]);
+            assert.equal(patched.body.variations[1].channels, undefined);
+
+            const replaced = await api("PUT", `/items/${created.body.id}`, {
+                json: itemBody(`ChanOn ${suffix}`, { channels: ["online"] }),
+            });
+            assert.equal(replaced.status, 200, replaced.text);
+            assert.deepEqual(replaced.body.channels, ["online"]);
+        });
+
+        it("rejects unknown, empty and repeated channels without echoing them", async () => {
+            const marker = `LEAK-${suffix}`;
+            for (const channels of [[marker], [], ["pos", "pos"], "online"]) {
+                const res = await api("POST", "/items", {
+                    json: itemBody(`ChanBad ${suffix}`, { channels }),
+                });
+                assert.equal(res.status, 400, JSON.stringify(channels));
+                assert.equal(res.body.errors[0].path, "channels");
+                assert.ok(!res.text.includes(marker));
+            }
+        });
+
+        it("changes only channels through the channels endpoint", async () => {
+            const created = await api("POST", "/items", {
+                json: itemBody(`ChanOnly ${suffix}`),
+            });
+            const [small] = variationIds(created.body);
+            const res = await api("PUT", `/items/${created.body.id}/channels`, {
+                json: {
+                    channels: ["online"],
+                    variations: { [small]: ["online"] },
+                },
+            });
+            assert.equal(res.status, 200, res.text);
+            assert.deepEqual(res.body.channels, ["online"]);
+            assert.deepEqual(res.body.variations[0].channels, ["online"]);
+            assert.equal(res.body.name, created.body.name);
+
+            const unfollow = await api(
+                "PUT",
+                `/items/${created.body.id}/channels`,
+                {
+                    json: {
+                        channels: ["online"],
+                        variations: { [small]: null },
+                    },
+                },
+            );
+            assert.equal(unfollow.body.variations[0].channels, undefined);
+
+            const foreign = await api(
+                "PUT",
+                `/items/${created.body.id}/channels`,
+                { json: { channels: ["pos"], variations: { nope: ["pos"] } } },
+            );
+            assert.equal(foreign.status, 400);
+            assert.equal(
+                (await api("GET", `/items/${created.body.id}`)).body
+                    .channels[0],
+                "online",
+                "a refused change writes nothing",
+            );
+            assert.equal(
+                (
+                    await api("PUT", "/items/missing/channels", {
+                        json: { channels: ["pos"] },
+                    })
+                ).status,
+                404,
+            );
+            assert.equal(
+                (
+                    await call(
+                        server.url,
+                        "PUT",
+                        `/items/${created.body.id}/channels`,
+                        {
+                            cookie: viewer,
+                            json: { channels: ["pos"] },
+                        },
+                    )
+                ).status,
+                403,
+            );
+            assert.equal(
+                (
+                    await call(
+                        server.url,
+                        "PUT",
+                        `/items/${created.body.id}/channels`,
+                        {
+                            json: { channels: ["pos"] },
+                        },
+                    )
+                ).status,
+                401,
+            );
+        });
+
+        it("carries channels through CSV export and import", async () => {
+            const name = `ChanCsv ${suffix}`;
+            const csv = [
+                "item name,variation name,sku,price,currency,channels,variation channels",
+                `${name},Small,CSV-S-${suffix},1.00,CAD,pos; online,pos`,
+                `${name},Large,CSV-L-${suffix},2.00,CAD,pos; online,`,
+            ].join("\r\n");
+            const imported = await api("POST", "/import", { csv });
+            assert.equal(imported.status, 200, imported.text);
+            const item = (
+                await api("GET", `/items?q=${encodeURIComponent(name)}`)
+            ).body.items[0];
+            assert.deepEqual(item.channels, ["pos", "online"]);
+            const byName = Object.fromEntries(
+                item.variations.map(
+                    (
+                        v: Item["variations"] extends (infer V)[] | null
+                            ? V
+                            : never,
+                    ) => [v.name, v],
+                ),
+            );
+            assert.deepEqual(byName.Small.channels, ["pos"]);
+            assert.equal(byName.Large.channels, undefined);
+
+            const exported = (await api("GET", "/export")).text;
+            assert.match(
+                exported.split("\r\n")[0],
+                /,archived,channels,variation channels$/,
+            );
+            assert.ok(exported.includes(`CSV-S-${suffix}`));
+            assert.ok(
+                exported.includes(`pos; online,pos\r\n`),
+                "item and variation channels are exported",
+            );
+
+            const bad = await api("POST", "/import?dryRun=true", {
+                csv: `item name,channels\r\n${name},shop\r\n`,
+            });
+            assert.equal(bad.body.rows[0].errors[0].path, "channels");
+
+            const kept = await api("POST", "/import", {
+                csv: `item name,sku\r\n${name},CSV-S-${suffix}\r\n`,
+            });
+            assert.equal(kept.status, 200, kept.text);
+            const again = (
+                await api("GET", `/items?q=${encodeURIComponent(name)}`)
+            ).body.items[0];
+            assert.deepEqual(again.channels, ["pos", "online"], "left alone");
+        });
+
+        it("survives a Square sync, which never writes channels", async () => {
+            const id = `sqchan-${suffix}`;
+            const synced = (name: string): Item => ({
+                id,
+                name,
+                variations: [],
+                locationIds: [L1],
+            });
+            await setActiveProvider("square");
+            try {
+                await syncResource({
+                    name: "catalog",
+                    fetchRemote: async () => [synced("Before")],
+                    store: catalogStore,
+                });
+                const before = await api("GET", `/items/${id}`);
+                assert.deepEqual(before.body.channels, ["pos"]);
+
+                const set = await api("PUT", `/items/${id}/channels`, {
+                    json: { channels: ["pos", "online"] },
+                });
+                assert.equal(set.status, 200, set.text);
+
+                await syncResource({
+                    name: "catalog",
+                    fetchRemote: async () => [synced("After")],
+                    store: catalogStore,
+                });
+                const after = await api("GET", `/items/${id}`);
+                assert.equal(after.body.name, "After");
+                assert.deepEqual(after.body.channels, ["pos", "online"]);
+            } finally {
+                await setActiveProvider("local");
+                await pool.query(
+                    `DELETE FROM "tessellate-catalog-item-locations" WHERE item_id = $1`,
+                    [id],
+                );
+                await pool.query(
+                    `DELETE FROM "tessellate-catalog-items" WHERE id = $1`,
+                    [id],
+                );
+            }
         });
     });
 

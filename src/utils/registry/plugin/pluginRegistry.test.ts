@@ -15,6 +15,7 @@ const permissions = (customer: boolean) => ({
     order: false,
     customer,
     auth: false,
+    payment: false,
 });
 
 /** Builds a registry holding one permitted and one unpermitted plugin. */

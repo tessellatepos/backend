@@ -18,6 +18,7 @@ import {
     getItem,
     listCategories,
     listItems,
+    setItemChannels,
     toApiItem,
     type WriteContext,
 } from "@/services/db/catalogManage";
@@ -25,11 +26,23 @@ import { exportCatalogCsv } from "@/services/db/catalogImport";
 import { MAX_CSV_BYTES } from "@/services/catalogCsv";
 import {
     parseCategoryInput,
+    parseChannelsChange,
     parseItemInput,
     parseItemPatch,
     parseItemQuery,
     type Validated,
 } from "@/services/catalogValidation";
+import {
+    categoryListQuerySchema,
+    categoryPageSchema,
+} from "@/gateway/schemas/catalog";
+import {
+    InvalidCursorError,
+    categoriesOf,
+    onlineItems,
+    pageOf,
+    readPaging,
+} from "@/services/onlineCatalog";
 import { refreshCatalogCache } from "@/services/catalogSync";
 import { emitDatabaseEvent } from "@/services/websocket/events";
 import { requireScope } from "@/middleware/authenticate";
@@ -44,6 +57,21 @@ export const catalogv1Endpoint: ITessellateApiRouter = {
     route_path: "/catalog",
     version: "v1",
     router: catalogRouter,
+    gateway: [
+        {
+            method: "GET",
+            path: "/categories",
+            internalPath: "/online/categories",
+            operationId: "categories.list",
+            scope: "catalog:read",
+            summary:
+                "List the categories of the items sold online at the credential's locations",
+            location: "none",
+            request: categoryListQuerySchema,
+            response: categoryPageSchema,
+            cacheSeconds: 60,
+        },
+    ],
 };
 
 const read = requireScope("catalog:read");
@@ -168,6 +196,25 @@ const notFound = (res: Response, what: string) =>
 
 // ---------------------------------------------------------------- items
 
+// The categories of what is sold online, for the gateway's storefront view.
+catalogRouter.get(
+    "/online/categories",
+    read,
+    handle(async (req, res) => {
+        let paging: ReturnType<typeof readPaging>;
+        try {
+            paging = readPaging(req.query);
+        } catch (err) {
+            if (!(err instanceof InvalidCursorError)) throw err;
+            res.status(400).json({ message: "Invalid cursor" });
+            return;
+        }
+        const items = await onlineItems(req.principal?.location_ids ?? []);
+        const page = pageOf(categoriesOf(items), paging);
+        res.json({ categories: page.items, next_cursor: page.nextCursor });
+    }),
+);
+
 catalogRouter.get(
     "/items",
     read,
@@ -254,6 +301,25 @@ catalogRouter.patch(
                   contextOf(req),
               )
             : null;
+        if (!result) return notFound(res, "Item");
+        await announce(result.locationIds);
+        res.json(toApiItem(result.item));
+    }),
+);
+
+// Channels are the one item field that can be set whatever the provider: a
+// Square sync never writes them, so this is how a Square item goes online.
+catalogRouter.put(
+    "/items/:id/channels",
+    write,
+    handle(async (req, res) => {
+        const change = parseChannelsChange(req.body);
+        if (!change.ok) return invalid(res, change);
+        const id = idParam(req);
+        const scope = visibleCatalogScope();
+        const visible = id ? await getItem(id, scope, contextOf(req)) : null;
+        if (!id || !visible) return notFound(res, "Item");
+        const result = await setItemChannels(id, change.value, contextOf(req));
         if (!result) return notFound(res, "Item");
         await announce(result.locationIds);
         res.json(toApiItem(result.item));

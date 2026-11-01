@@ -92,6 +92,34 @@
       "when": 1793479389342,
       "tag": "0012_gateway_webhook_deliveries",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793482083369,
+      "tag": "0013_online_payments",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793482842249,
+      "tag": "0014_catalog_channels",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1793483785915,
+      "tag": "0015_order_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793484001108,
+      "tag": "0016_online_payment_expiry",
+      "breakpoints": true
     }
   ]
 }

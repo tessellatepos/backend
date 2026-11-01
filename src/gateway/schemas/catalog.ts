@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { Item, ItemCategory, ItemVariation } from "@tessellatepos/sdk";
-import { moneySchema } from "./common.js";
+import { cursorSchema, limitSchema, moneySchema } from "./common.js";
+
+const channelsSchema = z.array(z.enum(["pos", "online"]));
 
 // Parent categories are shown one level deep: a recursive schema would need
 // $ref targets, which do not survive being embedded in the OpenAPI document.
@@ -40,6 +42,7 @@ const variationSchema = z.object({
         .nullish(),
     trackInventory: z.boolean().nullish(),
     parent: z.object({ id: z.string(), name: z.string().nullish() }).nullish(),
+    channels: channelsSchema.optional(),
 }) satisfies z.ZodType<ItemVariation>;
 
 /** A catalog item as the gateway returns it. */
@@ -54,6 +57,33 @@ export const itemSchema = z.object({
     isArchived: z.boolean().nullish(),
     locationIds: z.array(z.string()).nullish(),
     image: z.string().nullish(),
+    channels: channelsSchema.optional(),
 }) satisfies z.ZodType<Item>;
 
-export const itemListSchema = z.array(itemSchema);
+/** One page of online items. `next_cursor` is null on the last page. */
+export const itemPageSchema = z.object({
+    items: z.array(itemSchema),
+    next_cursor: z.string().nullable(),
+});
+
+export const categoryPageSchema = z.object({
+    categories: z.array(categorySchema.extend({ id: z.string() })),
+    next_cursor: z.string().nullable(),
+});
+
+export const itemListQuerySchema = z.strictObject({
+    category_id: z.string().min(1).max(255).optional(),
+    limit: limitSchema.optional(),
+    cursor: cursorSchema.optional(),
+});
+
+export const itemSearchQuerySchema = z.strictObject({
+    q: z.string().min(1).max(255),
+    limit: limitSchema.optional(),
+    cursor: cursorSchema.optional(),
+});
+
+export const categoryListQuerySchema = z.strictObject({
+    limit: limitSchema.optional(),
+    cursor: cursorSchema.optional(),
+});

@@ -16,6 +16,7 @@ const permissions = (customer: boolean) => ({
     order: false,
     customer,
     auth: false,
+    payment: false,
 });
 
 const ada = {

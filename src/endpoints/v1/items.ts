@@ -8,11 +8,59 @@ import { updateCatalogInCache } from "@/services/catalogSync";
 import { getParamValue } from "@/utils/expressHelpers";
 import { requireLocation, requireScope } from "@/middleware/authenticate";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
-import { itemListSchema } from "@/gateway/schemas/catalog";
+import {
+    itemListQuerySchema,
+    itemPageSchema,
+    itemSchema,
+    itemSearchQuerySchema,
+} from "@/gateway/schemas/catalog";
+import {
+    InvalidCursorError,
+    cachedItemsFor,
+    inCategory,
+    matchesText,
+    onlineItems,
+    pageOf,
+    readPaging,
+} from "@/services/onlineCatalog";
 
 const itemRouter: Router = express.Router();
 
 const logger = new Logger();
+
+/** How long a store may reuse an online catalog answer without asking again. */
+const ONLINE_CATALOG_MAX_AGE = 60;
+
+/**
+ * Runs an online-catalog handler, answering a bad cursor with 400.
+ * @param fn the handler
+ * @returns the Express handler
+ */
+function online(
+    fn: (req: Request, res: Response) => Promise<void>,
+): (req: Request, res: Response) => Promise<void> {
+    return async (req, res) => {
+        try {
+            await fn(req, res);
+        } catch (err) {
+            if (err instanceof InvalidCursorError) {
+                res.status(400).json({ message: "Invalid cursor" });
+                return;
+            }
+            logger.error("Online catalog request failed:", err);
+            res.status(500).json({ message: "Failed to read the catalog" });
+        }
+    };
+}
+
+/** @returns the first value of a query parameter that is a string */
+function queryText(value: unknown): string | undefined {
+    return typeof value === "string" && value ? value : undefined;
+}
+
+function sendPage(res: Response, page: ReturnType<typeof pageOf<Item>>): void {
+    res.json({ items: page.items, next_cursor: page.nextCursor });
+}
 
 export const itemsv1Endpoint: ITessellateApiRouter = {
     route_path: "/items",
@@ -22,42 +70,120 @@ export const itemsv1Endpoint: ITessellateApiRouter = {
         {
             method: "GET",
             path: "/",
-            internalPath: "/by-location/",
+            internalPath: "/online/",
             operationId: "items.list",
             scope: "catalog:read",
-            summary: "List catalog items at the credential's locations",
+            summary:
+                "List the items sold online at the credential's locations, one page at a time",
             location: "none",
-            response: itemListSchema,
+            request: itemListQuerySchema,
+            response: itemPageSchema,
+            cacheSeconds: ONLINE_CATALOG_MAX_AGE,
+        },
+        {
+            method: "GET",
+            path: "/search",
+            internalPath: "/online/search",
+            operationId: "items.search",
+            scope: "catalog:read",
+            summary:
+                "Search the online items by name, display name, variation name or SKU",
+            location: "none",
+            request: itemSearchQuerySchema,
+            response: itemPageSchema,
+            cacheSeconds: ONLINE_CATALOG_MAX_AGE,
+        },
+        {
+            method: "GET",
+            path: "/by-id/:itemId",
+            internalPath: "/online/by-id/:itemId",
+            operationId: "items.get",
+            scope: "catalog:read",
+            summary: "Get one item sold online at the credential's locations",
+            location: "none",
+            response: itemSchema,
+            cacheSeconds: ONLINE_CATALOG_MAX_AGE,
         },
         {
             method: "GET",
             path: "/:locationId",
-            internalPath: "/by-location/:locationId",
+            internalPath: "/online/at/:locationId",
             operationId: "items.listAtLocation",
             scope: "catalog:read",
-            summary: "List catalog items at one location",
+            summary:
+                "List the items sold online at one location, one page at a time",
             location: "path",
-            response: itemListSchema,
+            request: itemListQuerySchema,
+            response: itemPageSchema,
+            cacheSeconds: ONLINE_CATALOG_MAX_AGE,
         },
     ],
 };
 
-/**
- * The catalog a principal may see across locations: everything for an
- * unpinned principal, otherwise the union of its locations' items.
- * @param locationIds the principal's `location_ids`
- * @returns the items, each once
- */
-async function itemsForLocations(locationIds: "all" | string[]) {
-    if (locationIds === "all") return getItemsByLocationID();
-    const byId = new Map<string, Item>();
-    for (const id of locationIds) {
-        for (const item of await getItemsByLocationID(id)) {
-            byId.set(item.id, item);
+// The online catalog: items sold on the "online" channel at the principal's
+// locations, in id order, paged by cursor. The gateway serves these.
+itemRouter.get(
+    "/online/",
+    requireScope("catalog:read"),
+    online(async (req, res) => {
+        const paging = readPaging(req.query);
+        const categoryId = queryText(req.query.category_id);
+        const items = (
+            await onlineItems(req.principal?.location_ids ?? [])
+        ).filter((item) => !categoryId || inCategory(item, categoryId));
+        sendPage(res, pageOf(items, paging));
+    }),
+);
+
+itemRouter.get(
+    "/online/search",
+    requireScope("catalog:read"),
+    online(async (req, res) => {
+        const paging = readPaging(req.query);
+        const text = queryText(req.query.q);
+        if (!text) {
+            res.status(400).json({ message: "q is required" });
+            return;
         }
-    }
-    return [...byId.values()];
-}
+        const items = (
+            await onlineItems(req.principal?.location_ids ?? [])
+        ).filter((item) => matchesText(item, text));
+        sendPage(res, pageOf(items, paging));
+    }),
+);
+
+itemRouter.get(
+    "/online/by-id/:itemId",
+    requireScope("catalog:read"),
+    online(async (req, res) => {
+        const itemId = getParamValue(req.params.itemId);
+        const item = (
+            await onlineItems(req.principal?.location_ids ?? [])
+        ).find((candidate) => candidate.id === itemId);
+        if (!item) {
+            res.status(404).json({ message: "Item not found" });
+            return;
+        }
+        res.json(item);
+    }),
+);
+
+itemRouter.get(
+    "/online/at/:locationId",
+    requireScope("catalog:read"),
+    requireLocation((req) => req.params.locationId as string),
+    online(async (req, res) => {
+        const paging = readPaging(req.query);
+        const categoryId = queryText(req.query.category_id);
+        const items = (
+            await onlineItems(
+                req.principal?.location_ids ?? [],
+                getParamValue(req.params.locationId),
+            )
+        ).filter((item) => !categoryId || inCategory(item, categoryId));
+        sendPage(res, pageOf(items, paging));
+    }),
+);
 
 // itemRouter.get("/items/:itemId", async (req: Request, res: Response) => {});
 
@@ -114,9 +240,7 @@ itemRouter.get(
         logger.debug(
             "No locationID provided, fetching items for the principal's locations.",
         );
-        const fetched = await itemsForLocations(
-            req.principal?.location_ids ?? [],
-        );
+        const fetched = await cachedItemsFor(req.principal?.location_ids ?? []);
         if (Array.isArray(fetched)) items = fetched;
 
         res.json(items);

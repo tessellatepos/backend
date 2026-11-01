@@ -102,6 +102,15 @@ function isPluginManifest(pkg: unknown): pkg is PluginManifest {
         return false;
     }
 
+    const gatewayScopes = tessellate.gatewayScopes;
+    if (
+        gatewayScopes !== undefined &&
+        (!Array.isArray(gatewayScopes) ||
+            !gatewayScopes.every((scope) => typeof scope === "string"))
+    ) {
+        return false;
+    }
+
     return true;
 }
 
@@ -118,5 +127,6 @@ export function grantedPermissions(
         order: requested.has(PluginPermission.ORDER),
         auth: requested.has(PluginPermission.AUTH),
         customer: requested.has(PluginPermission.CUSTOMER),
+        payment: requested.has(PluginPermission.PAYMENT),
     };
 }

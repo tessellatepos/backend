@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { bigintReplacer, type Scope } from "@tessellatepos/sdk";
 import { customerSchema } from "@/gateway/schemas/customers";
-import { orderSchema } from "@/gateway/schemas/orders";
+import { invoiceSchema, orderSchema } from "@/gateway/schemas/orders";
 
 /** One webhook type a credential may subscribe to through its scopes. */
 export interface WebhookEventSpec {
@@ -23,7 +23,11 @@ function parseWith(schema: z.ZodType, value: unknown) {
 }
 
 function orderData(order: unknown) {
-    const parsed = orderSchema.safeParse(order);
+    // Host events carry in-memory bigint amounts; the schema reads the wire
+    // form (digit strings), so convert before parsing.
+    const parsed = orderSchema.safeParse(
+        JSON.parse(JSON.stringify(order, bigintReplacer)),
+    );
     if (!parsed.success) return null;
     // The wire form: amounts as digit strings, as the gateway returns them.
     return {
@@ -31,6 +35,41 @@ function orderData(order: unknown) {
         locationId: parsed.data.locationId,
     };
 }
+
+/**
+ * An invoice event's public data. Plugin invoice events carry the invoice and
+ * its order; the order supplies the location the delivery is filtered by.
+ */
+function invoiceData(args: unknown[]) {
+    const [invoice, order] = args as [
+        { [key: string]: unknown; order_reference?: string },
+        { locationId?: string } | undefined,
+    ];
+    if (!invoice || !order?.locationId) return null;
+    const wire = JSON.parse(JSON.stringify(invoice, bigintReplacer));
+    const parsed = invoiceSchema.safeParse({
+        id: wire.id,
+        order_id: wire.order_reference,
+        processor: wire.processor_id,
+        status: wire.status,
+        url: wire.url,
+        amount: wire.amount,
+        due_date: wire.due_date ?? null,
+        created_at: wire.created_at,
+        updated_at: wire.updated_at,
+    });
+    if (!parsed.success) return null;
+    return {
+        data: JSON.parse(JSON.stringify(parsed.data, bigintReplacer)),
+        locationId: order.locationId,
+    };
+}
+
+const invoiceEvent = (type: string): WebhookEventSpec => ({
+    type,
+    scope: "orders:read",
+    toData: invoiceData,
+});
 
 /**
  * Host event name to webhook spec. Names are the plugin-sdk event names, plus
@@ -52,6 +91,13 @@ export const WEBHOOK_EVENTS: Record<string, WebhookEventSpec> = {
         scope: "orders:read",
         toData: (args) => orderData(args[0]),
     },
+    invoiceCreated: invoiceEvent("invoice.created"),
+    invoiceSent: invoiceEvent("invoice.sent"),
+    invoiceViewed: invoiceEvent("invoice.viewed"),
+    invoicePaid: invoiceEvent("invoice.paid"),
+    invoiceOverdue: invoiceEvent("invoice.overdue"),
+    invoiceCanceled: invoiceEvent("invoice.canceled"),
+    invoiceRefunded: invoiceEvent("invoice.refunded"),
     customerCreated: {
         type: "customer.created",
         scope: "customers:read",

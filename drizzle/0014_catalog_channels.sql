@@ -1,0 +1,2 @@
+ALTER TABLE "tessellate-catalog-item-variations" ADD COLUMN "channels" text[];--> statement-breakpoint
+ALTER TABLE "tessellate-catalog-items" ADD COLUMN "channels" text[] DEFAULT ARRAY['pos']::text[] NOT NULL;

@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { parseMoney, stripBigints } from "@tessellatepos/sdk";
 import type {
     Customer,
@@ -16,7 +16,11 @@ import { catalogItemVariationsTable, ordersTable } from "@/services/db/schema";
 import { getCatalogByLocation } from "@/services/db/catalog";
 import { customerStore, searchCustomers } from "@/services/db/customers";
 import { getLocations } from "@/services/db/locations";
-import { getOrderById, rowToOrder } from "@/services/db/orders";
+import {
+    getOrderById,
+    openUnpaidOrder,
+    rowToOrder,
+} from "@/services/db/orders";
 import {
     createCategory,
     createItem,
@@ -243,6 +247,26 @@ async function fetchOrder(orderId: string): Promise<Order | undefined | null> {
 }
 
 /**
+ * Cancels an open order that has no tender. The state check is part of the
+ * update, so a payment or a second cancel racing this one cannot both win.
+ * @param orderId the order to cancel
+ * @returns the canceled order, or null if it is missing, paid or closed
+ */
+async function cancelOrder(orderId: string): Promise<Order | null> {
+    if (!orderId) return null;
+    const [row] = await drizzleDB
+        .update(ordersTable)
+        .set({
+            state: "CANCELED",
+            version: sql`coalesce(${ordersTable.version}, 0) + 1`,
+            updatedAt: new Date(),
+        })
+        .where(and(eq(ordersTable.referenceId, orderId), openUnpaidOrder))
+        .returning();
+    return row ? rowToOrder(row) : null;
+}
+
+/**
  * Marks an order paid with cash and returns the change due.
  * Uses optimistic locking via the `version` column to prevent lost updates.
  * @param orderId the order to pay
@@ -453,6 +477,7 @@ export const localProvider: CatalogProvider &
     fetchLocations,
     createOrder,
     fetchOrder,
+    cancelOrder,
     createTerminalCheckout,
     getTerminalCheckoutStatus,
     payCash,

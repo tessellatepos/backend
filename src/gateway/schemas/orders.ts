@@ -1,6 +1,11 @@
 import { z } from "zod";
 import type { CartItem, Discount, Order } from "@tessellatepos/sdk";
-import { moneySchema, wireBigint } from "./common.js";
+import {
+    cursorSchema,
+    limitSchema,
+    moneySchema,
+    wireBigint,
+} from "./common.js";
 
 const discountSchema = z.object({
     id: z.string(),
@@ -33,6 +38,49 @@ const lineItemSchema = z.object({
     variationName: z.string().nullish(),
 });
 
+const orderPaymentStatusSchema = z.enum([
+    "unpaid",
+    "processing",
+    "paid",
+    "failed",
+    "refunded",
+]);
+
+/** One attempt to collect payment, without any processor-side identifier. */
+const paymentAttemptSchema = z.object({
+    id: z.string(),
+    processor: z.string(),
+    kind: z.enum(["checkout", "invoice"]),
+    status: z.string(),
+    url: z.string().optional(),
+    amount: moneySchema,
+    due_date: z.string().optional(),
+    expires_at: z.string().nullable(),
+    created_at: z.string(),
+    updated_at: z.string(),
+});
+
+/** An invoice, in order responses, `orders.invoice` and `invoice.*` webhooks. */
+export const invoiceSchema = z.object({
+    id: z.string(),
+    order_id: z.string(),
+    processor: z.string(),
+    status: z.enum([
+        "draft",
+        "sent",
+        "viewed",
+        "paid",
+        "overdue",
+        "canceled",
+        "refunded",
+    ]),
+    url: z.string().optional(),
+    amount: moneySchema,
+    due_date: z.string().nullable(),
+    created_at: z.string(),
+    updated_at: z.string(),
+});
+
 /** An order as the gateway returns it. Tender details are not exposed. */
 export const orderSchema = z.object({
     id: z.string().optional(),
@@ -54,7 +102,58 @@ export const orderSchema = z.object({
     totalDiscountMoney: moneySchema.optional(),
     totalTipMoney: moneySchema.optional(),
     totalServiceChargeMoney: moneySchema.optional(),
+    // Derived from the order's payment attempts; see derivePaymentStatus.
+    payment_status: orderPaymentStatusSchema.optional(),
+    latest_payment: paymentAttemptSchema.nullish(),
+    invoice: invoiceSchema.nullish(),
 }) satisfies z.ZodType<Order>;
+
+export const orderPageSchema = z.object({
+    orders: z.array(orderSchema),
+    next_cursor: z.string().nullable(),
+});
+
+export const orderListQuerySchema = z.strictObject({
+    limit: limitSchema.optional(),
+    cursor: cursorSchema.optional(),
+});
+
+/**
+ * Where the shopper goes after the hosted page. Both URLs must be on one of
+ * the credential's allowed origins (checked when the checkout starts).
+ */
+export const orderCheckoutSchema = z.strictObject({
+    processor: z
+        .string()
+        .regex(/^[a-z][a-z0-9_-]{0,63}$/, "must be a processor id"),
+    success_url: z.url().max(2048),
+    cancel_url: z.url().max(2048),
+});
+
+/**
+ * An invoice for an order. The customer is the order's, or `customer_id` when
+ * the order has none (which needs the `customers:read` scope).
+ */
+export const orderInvoiceSchema = z.strictObject({
+    processor: z
+        .string()
+        .regex(/^[a-z][a-z0-9_-]{0,63}$/, "must be a processor id"),
+    customer_id: z.string().min(1).max(255).optional(),
+    delivery: z.enum(["EMAIL", "SMS", "SHARE_MANUALLY"]),
+    due_date: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "must be a YYYY-MM-DD date"),
+    message: z.string().min(1).max(500).optional(),
+});
+
+export type OrderInvoiceInput = z.infer<typeof orderInvoiceSchema>;
+
+export const orderCheckoutResponseSchema = z.object({
+    url: z.string(),
+    expires_at: z.string().nullable(),
+    processor: z.string(),
+    payment_id: z.string(),
+});
 
 /**
  * What a gateway caller may send to create an order. Strict: any

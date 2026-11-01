@@ -1,6 +1,8 @@
 import express, { type Request, type Response, Router } from "express";
 import { Logger } from "tslog";
 import type { ApiCredentialInput } from "@tessellatepos/sdk";
+import { CORE_SCOPES } from "@tessellatepos/sdk";
+import type { TessellatePluginRegistry } from "@/utils/registry/plugin/pluginRegistry";
 import { requireScope } from "@/middleware/authenticate";
 import { listDeliveries } from "@/services/db/webhookDeliveries";
 import { replayDelivery } from "@/gateway/webhooks/dispatch";
@@ -65,6 +67,22 @@ credentialRouter.get(
         } catch (err) {
             sendError(res, err, "list");
         }
+    },
+);
+
+// The scopes an owner can grant: the core ones a credential may hold, plus
+// what loaded plugins declared in tessellate.gatewayScopes. Before "/:id".
+credentialRouter.get(
+    "/scopes",
+    requireScope("credentials:admin"),
+    (req: Request, res: Response) => {
+        const plugins = (
+            req.app.locals as { pluginRegistry?: TessellatePluginRegistry }
+        ).pluginRegistry;
+        res.json({
+            core: CORE_SCOPES,
+            plugin: plugins?.gatewayScopes() ?? [],
+        });
     },
 );
 

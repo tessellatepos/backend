@@ -1,6 +1,15 @@
 import "dotenv/config";
-import { and, desc, eq, sql } from "drizzle-orm";
-import { ordersTable } from "./schema";
+import {
+    and,
+    desc,
+    eq,
+    inArray,
+    isNotNull,
+    or,
+    sql,
+    type SQL,
+} from "drizzle-orm";
+import { onlinePaymentsTable, ordersTable } from "./schema";
 import { drizzleDB } from "@/services/db/postgres";
 import { parseMoney, stripBigints } from "@tessellatepos/sdk";
 import type {
@@ -71,16 +80,31 @@ function toDbOrder(order: Order): typeof ordersTable.$inferInsert {
 }
 
 /**
+ * SQL condition for an order that is open and has no tender: the only orders
+ * the open-order cap counts and the expiry job may cancel.
+ */
+export const openUnpaidOrder = sql`${ordersTable.state} = 'OPEN' and coalesce(jsonb_array_length(case when jsonb_typeof(${ordersTable.tenders}) = 'array' then ${ordersTable.tenders} else '[]'::jsonb end), 0) = 0`;
+
+/**
  * Persists a Square order locally, keyed by its referenceId.
  * @param order the Square order to persist
+ * @param db the db or a transaction
+ * @param createdByCredential the gateway credential that created the order
  * @returns the inserted row, or null if the order has no referenceId
  */
-export async function insertOrder(order: Order, db: TDrizzleDB = drizzleDB) {
+export async function insertOrder(
+    order: Order,
+    db: TDrizzleDB = drizzleDB,
+    createdByCredential?: string,
+) {
     if (!order.referenceId) {
         return null;
     }
 
-    const dbOrder = toDbOrder(order);
+    const dbOrder = {
+        ...toDbOrder(order),
+        createdByCredential: createdByCredential ?? null,
+    };
     await db.insert(ordersTable).values(dbOrder);
     return dbOrder;
 }
@@ -174,20 +198,13 @@ export interface OrderPage {
     nextCursor: string | null;
 }
 
-/**
- * Lists the orders placed for a customer, newest first. The cursor encodes
- * the last row's created_at (microsecond precision) and reference id.
- * @param customerId the customer to list orders for
- * @param options page size (default 50, max 200) and cursor from a previous page
- * @returns a page of orders
- */
-export async function listOrdersByCustomer(
-    customerId: string,
-    options: { limit?: number; cursor?: string } = {},
-    db: TDrizzleDB = drizzleDB,
+async function pageOrders(
+    base: SQL[],
+    options: { limit?: number; cursor?: string },
+    db: TDrizzleDB,
 ): Promise<OrderPage> {
     const limit = Math.min(Math.max(Math.floor(options.limit ?? 50), 1), 200);
-    const filters = [eq(ordersTable.customerId, customerId)];
+    const filters = [...base];
     if (options.cursor) {
         const [ts, ref] = decodeCursor(options.cursor);
         filters.push(
@@ -214,4 +231,85 @@ export async function listOrdersByCustomer(
                   ).toString("base64url")
                 : null,
     };
+}
+
+/**
+ * Lists the orders placed for a customer, newest first. The cursor encodes
+ * the last row's created_at (microsecond precision) and reference id.
+ * @param customerId the customer to list orders for
+ * @param options page size (default 50, max 200) and cursor from a previous page
+ * @returns a page of orders
+ */
+export async function listOrdersByCustomer(
+    customerId: string,
+    options: { limit?: number; cursor?: string } = {},
+    db: TDrizzleDB = drizzleDB,
+): Promise<OrderPage> {
+    return pageOrders([eq(ordersTable.customerId, customerId)], options, db);
+}
+
+/**
+ * Lists the orders a gateway credential created, newest first, restricted to
+ * the locations it may act on.
+ * @param credentialId the credential that created the orders
+ * @param locationIds the credential's location ids, or "all"
+ * @param options page size (default 50, max 200) and cursor from a previous page
+ * @returns a page of orders
+ */
+export async function listOrdersByCredential(
+    credentialId: string,
+    locationIds: string[] | "all",
+    options: { limit?: number; cursor?: string } = {},
+    db: TDrizzleDB = drizzleDB,
+): Promise<OrderPage> {
+    const filters = [eq(ordersTable.createdByCredential, credentialId)];
+    if (locationIds !== "all") {
+        filters.push(inArray(ordersTable.locationId, locationIds));
+    }
+    return pageOrders(filters, options, db);
+}
+
+/**
+ * Lists the online orders at one location for staff, newest first: orders a
+ * credential created, plus any order that has a payment attempt (a till order
+ * that was invoiced, say).
+ * @param locationId the location
+ * @param filter `source` is the order's source name (the credential's name);
+ * `processor` keeps orders with an attempt at that processor
+ * @param options page size (default 50, max 200) and cursor
+ * @returns a page of orders
+ */
+export async function listOnlineOrdersAtLocation(
+    locationId: string,
+    filter: { source?: string; processor?: string } = {},
+    options: { limit?: number; cursor?: string } = {},
+    db: TDrizzleDB = drizzleDB,
+): Promise<OrderPage> {
+    const attempt = (extra?: SQL) =>
+        sql`exists (select 1 from ${onlinePaymentsTable} where ${onlinePaymentsTable.order_reference} = ${ordersTable.referenceId}${extra ? sql` and ${extra}` : sql``})`;
+    const filters: SQL[] = [
+        eq(ordersTable.locationId, locationId),
+        or(isNotNull(ordersTable.createdByCredential), attempt())!,
+    ];
+    if (filter.source) filters.push(eq(ordersTable.sourceName, filter.source));
+    if (filter.processor) {
+        filters.push(
+            attempt(eq(onlinePaymentsTable.processor_id, filter.processor)),
+        );
+    }
+    return pageOrders(filters, options, db);
+}
+
+/**
+ * Finds an order by the id the provider gave it or by its reference id.
+ * @param id either id
+ * @returns the row, or null
+ */
+export async function getOrderByAnyId(id: string, db: TDrizzleDB = drizzleDB) {
+    const [row] = await db
+        .select()
+        .from(ordersTable)
+        .where(or(eq(ordersTable.referenceId, id), eq(ordersTable.id, id)))
+        .limit(1);
+    return row ?? null;
 }

@@ -26,6 +26,7 @@ import {
 } from "@/services/customers";
 import { InvalidCursorError, listOrdersByCustomer } from "@/services/db/orders";
 import { requireScope } from "@/middleware/authenticate";
+import { pluginContext } from "@/utils/pluginContext";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
 import type {
     DispatchOptions,
@@ -142,6 +143,7 @@ async function prepareInput(
         { customer, existingId },
         {
             ...CUSTOMER_ONLY,
+            context: pluginContext(req),
             carry: (output, previous) => {
                 modified = output;
                 return { ...previous, customer: output };

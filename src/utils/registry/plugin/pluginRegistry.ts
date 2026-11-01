@@ -3,6 +3,7 @@ import { publishGatewayEvent } from "@/gateway/webhooks/dispatch";
 import { TessellatePluginApiRegistry } from "@/utils/registry/api/pluginApiRegistry";
 import type { PluginPermissionProvider } from "@tessellatepos/plugin-sdk";
 import type {
+    HookContext,
     HookDefinition,
     HookResult,
     EventDefinition,
@@ -10,6 +11,15 @@ import type {
 import { Logger } from "tslog";
 import { TessellatePluginDatabaseRegistry } from "@/utils/registry/database/pluginDatabaseRegistry";
 import { authProviders } from "@/auth/providers";
+import {
+    processorRegistry,
+    type PaymentProcessorRegistry,
+} from "@/services/processors/registry";
+import { wrapPluginProcessor } from "@/services/processors/plugin";
+import {
+    assertGatewayScopes,
+    declaredGatewayScopes,
+} from "@/plugin/lifecycle/gatewayScopes";
 
 const logger = new Logger();
 
@@ -27,14 +37,21 @@ export interface HookOptions<TInput, TOutput> extends DispatchOptions {
      * TInput and TOutput are the same type.
      */
     carry?: (output: TOutput, input: TInput) => TInput;
+    /** Who caused the action; handlers get it as their second argument. */
+    context?: HookContext;
 }
+
+const NO_CONTEXT: HookContext = { principal: null, source: null };
 
 export class TessellatePluginRegistry {
     private plugins: Map<string, Plugin>;
     public apiRegistry: TessellatePluginApiRegistry;
     public databaseRegistry: TessellatePluginDatabaseRegistry;
 
-    constructor() {
+    private readonly processors: PaymentProcessorRegistry;
+
+    constructor(processors: PaymentProcessorRegistry = processorRegistry) {
+        this.processors = processors;
         this.plugins = new Map();
         this.databaseRegistry = new TessellatePluginDatabaseRegistry();
         this.apiRegistry = new TessellatePluginApiRegistry(
@@ -50,6 +67,10 @@ export class TessellatePluginRegistry {
             });
         }
 
+        // Declared gateway scopes and the scopes the mounts use are checked
+        // before anything of the plugin is mounted.
+        assertGatewayScopes(name, plugin);
+
         // Sign-in methods first: an id clash with another plugin refuses the
         // whole plugin before anything else of it is mounted.
         try {
@@ -61,6 +82,21 @@ export class TessellatePluginRegistry {
                 });
             }
         } catch (err) {
+            authProviders.removePlugin(name);
+            throw err;
+        }
+
+        // Processors next, for the same reason: an id clash refuses the whole
+        // plugin. Registered under the id the plugin declared, which
+        // validation tied to the plugin's name.
+        const added: string[] = [];
+        try {
+            for (const processor of plugin.get("paymentProcessor")) {
+                this.processors.register(wrapPluginProcessor(name, processor));
+                added.push(processor.id);
+            }
+        } catch (err) {
+            for (const id of added) this.processors.unregister(id);
             authProviders.removePlugin(name);
             throw err;
         }
@@ -81,8 +117,38 @@ export class TessellatePluginRegistry {
         }
     }
 
-    public unloadPlugin() {
-        //TODO add plugin unload function
+    /**
+     * Removes a plugin's contributions: processors, sign-in methods, API
+     * routes, tables handles, hooks and events. Gateway routes are built at
+     * startup and keep serving until the next restart, but their handlers
+     * are gone, so they answer 404.
+     * @param name the plugin's name
+     * @returns false when no such plugin is loaded
+     */
+    public unloadPlugin(name: string): boolean {
+        const plugin = this.plugins.get(name);
+        if (!plugin) return false;
+        for (const processor of plugin.get("paymentProcessor")) {
+            this.processors.unregister(processor.id);
+        }
+        authProviders.removePlugin(name);
+        this.apiRegistry.unregister(name);
+        this.databaseRegistry.unregister(name);
+        this.plugins.delete(name);
+        return true;
+    }
+
+    /**
+     * Scopes the loaded plugins declared for their gateway routes.
+     * @returns each scope with the plugin that owns it
+     */
+    public gatewayScopes(): { plugin: string; scope: string }[] {
+        return [...this.plugins].flatMap(([name, plugin]) =>
+            declaredGatewayScopes(name, plugin).map((scope) => ({
+                plugin: name,
+                scope,
+            })),
+        );
     }
 
     public getPlugins() {
@@ -104,7 +170,10 @@ export class TessellatePluginRegistry {
         let output: unknown = input; // the last handler's output
         for (const plugin of this.pluginsWith(options.requires)) {
             for (const handler of plugin.getHookHandlers(def.name)) {
-                const result = (await handler(value)) as HookResult<unknown>;
+                const result = (await handler(
+                    value,
+                    options.context ?? NO_CONTEXT,
+                )) as HookResult<unknown>;
                 if (!result.ok) return result;
                 output = result.value;
                 value = options.carry

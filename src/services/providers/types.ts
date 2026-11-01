@@ -131,6 +131,15 @@ export interface PaymentProvider {
         options?: CreateOrderOptions,
     ): Promise<Order | undefined | null>;
     fetchOrder(orderId: string): Promise<Order | undefined | null>;
+    /**
+     * Cancels an order that is still open with no tender, releasing it.
+     * Atomic: of any number of concurrent calls at most one gets the order
+     * back, so callers emit the cancel event only for that one.
+     * @param orderId the provider's order id
+     * @returns the canceled order, or null when it is missing, paid or
+     * already closed
+     */
+    cancelOrder(orderId: string): Promise<Order | null>;
     createTerminalCheckout?(
         orderId: string,
         amount: Money,

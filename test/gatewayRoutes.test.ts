@@ -32,6 +32,7 @@ const none: PluginPermissionProvider = {
     order: false,
     customer: false,
     auth: false,
+    payment: false,
 };
 
 // One pool and one Redis client for the file; suites share them.
@@ -82,15 +83,19 @@ describe("gateway routes", () => {
                 },
             ],
             locationIds,
+            channels: ["online"],
         });
         await setItemsByLocationID([
             item("alpha", [locA]),
             item("beta", [locB]),
         ]);
         // The local provider prices online orders from the database catalog.
-        await drizzleDB
-            .insert(catalogItemsTable)
-            .values({ id: `alpha-${suffix}`, name: "alpha", origin: "local" });
+        await drizzleDB.insert(catalogItemsTable).values({
+            id: `alpha-${suffix}`,
+            name: "alpha",
+            origin: "local",
+            channels: ["online"],
+        });
         await drizzleDB.insert(catalogItemVariationsTable).values([
             {
                 variationId: `alpha-var-${suffix}`,
@@ -205,7 +210,7 @@ describe("gateway routes", () => {
             auth: basic(reader),
         });
         assert.equal(res.status, 200);
-        const items = (await res.json()) as Item[];
+        const { items } = (await res.json()) as { items: Item[] };
         const ids = items.map((i) => i.id);
         assert.ok(ids.includes(`alpha-${suffix}`));
         assert.ok(!ids.includes(`beta-${suffix}`));

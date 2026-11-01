@@ -31,6 +31,7 @@ import {
 import { hydrateItems, type CatalogScope } from "./catalog";
 import {
     mergeVariations,
+    type ChannelsChange,
     type ItemDraft,
     type ItemPatch,
     type VariationDraft,
@@ -127,6 +128,7 @@ export function toDraft(item: Item): ItemDraft {
         isTaxable: item.isTaxable ?? true,
         isArchived: item.isArchived ?? false,
         image: item.image ?? null,
+        channels: item.channels ?? ["pos"],
         categoryIds: (item.categories ?? []).flatMap((c) =>
             c.id ? [c.id] : [],
         ),
@@ -139,6 +141,7 @@ export function toDraft(item: Item): ItemDraft {
             pricingType: v.pricingType ?? "FIXED",
             priceMoney: v.priceMoney ?? null,
             trackInventory: v.trackInventory ?? false,
+            ...(v.channels ? { channels: v.channels } : {}),
             locationOverrides: (v.locationOverrides ?? []).flatMap((o) =>
                 o.locationId
                     ? [
@@ -333,6 +336,7 @@ export async function writeItem(
         isTaxable: draft.isTaxable,
         isArchived: draft.isArchived,
         image: draft.image,
+        channels: draft.channels,
         updatedAt: new Date(),
     };
     if (isNew) {
@@ -372,6 +376,7 @@ export async function writeItem(
                     : null,
             ),
             trackInventory: variation.trackInventory,
+            channels: variation.channels ?? null,
         };
         await tx
             .insert(catalogItemVariationsTable)
@@ -543,6 +548,58 @@ export async function setItemArchived(
             .update(catalogItemsTable)
             .set({ isArchived: archived, updatedAt: new Date() })
             .where(eq(catalogItemsTable.id, id));
+        return { item: (await loadItem(tx, id))!, locationIds };
+    });
+}
+
+/**
+ * Sets the channels of an item and, optionally, of some of its variations.
+ * Works on any item, including ones a provider sync owns: a sync never
+ * writes channels, so this is where a Square catalog is opted in to the
+ * online store.
+ * @param id the item id
+ * @param change the new channels
+ * @param ctx the writer's location limit
+ * @returns the stored item, or null when it does not exist
+ */
+export async function setItemChannels(
+    id: string,
+    change: ChannelsChange,
+    ctx: WriteContext,
+): Promise<WriteResult | null> {
+    return withCatalogTx(async (tx) => {
+        const current = await loadItem(tx, id);
+        if (!current || !canSeeItem(ctx, current)) return null;
+        const locationIds = current.locationIds ?? [];
+        assertWritableScope(ctx, locationIds, locationIds);
+        const own = new Set(
+            (current.variations ?? []).flatMap((v) =>
+                v.itemId ? [v.itemId] : [],
+            ),
+        );
+        const unknown = Object.keys(change.variations ?? {}).filter(
+            (variationId) => !own.has(variationId),
+        );
+        if (unknown.length > 0) {
+            throw new CatalogError(400, "invalid_reference", "Invalid item", [
+                {
+                    path: "variations",
+                    message: "names a variation that is not this item's",
+                },
+            ]);
+        }
+        await tx
+            .update(catalogItemsTable)
+            .set({ channels: change.channels, updatedAt: new Date() })
+            .where(eq(catalogItemsTable.id, id));
+        for (const [variationId, channels] of Object.entries(
+            change.variations ?? {},
+        )) {
+            await tx
+                .update(catalogItemVariationsTable)
+                .set({ channels, updatedAt: new Date() })
+                .where(eq(catalogItemVariationsTable.variationId, variationId));
+        }
         return { item: (await loadItem(tx, id))!, locationIds };
     });
 }
