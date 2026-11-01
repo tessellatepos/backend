@@ -9,7 +9,7 @@
         "build": "tsc && tsc-alias && mkdir -p dist/seed && cp src/seed/demo-catalog.csv dist/seed/",
         "start": "node dist/server.js",
         "test": "node --import tsx --import ./test/helpers/env.ts --test --test-concurrency=1 \"test/*.test.ts\" \"src/**/*.test.ts\"",
-        "lint": "prettier . && eslint .",
+        "lint": "prettier --check . && eslint .",
         "lint:fix": "prettier . --write && eslint . --fix",
         "prepare": "husky"
     },
