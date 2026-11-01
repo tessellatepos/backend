@@ -8,6 +8,11 @@ on:
     release:
         types: [created]
     workflow_dispatch:
+        inputs:
+            tag:
+                description: Extra image tag to publish, e.g. 0.0.2-alpha (optional)
+                required: false
+                type: string
 
 env:
     IMAGE: ghcr.io/${{ github.repository }}
@@ -29,6 +34,7 @@ jobs:
                       type=ref,event=branch
                       type=ref,event=tag
                       type=sha
+                      type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
                       type=raw,value=latest,enable={{is_default_branch}}
             # PRs build the image to prove it works, but never publish it.
             - uses: docker/login-action@v4
