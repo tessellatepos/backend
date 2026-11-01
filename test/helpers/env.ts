@@ -3,4 +3,4 @@
 process.env.TOKEN_ENCRYPTION_KEY ??= Buffer.alloc(32, "t").toString("base64");
 process.env.BETTER_AUTH_SECRET ??= "test-only-better-auth-secret-0123456789";
 // The suite signs in repeatedly from one address; see rateLimitEnabled().
-process.env.NODE_ENV ??= "test";
+process.env.AUTH_RATE_LIMIT ??= "off";

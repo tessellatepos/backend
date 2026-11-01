@@ -61,18 +61,19 @@ async function attempts(
 }
 
 describe("sign-in rate limit", () => {
-    const original = process.env.NODE_ENV;
+    const original = process.env.AUTH_RATE_LIMIT;
     const running: Running[] = [];
 
     before(async () => {
         await migrateTestDb();
-        // Rate limiting is off under NODE_ENV=test; this suite needs it on.
-        process.env.NODE_ENV = "development";
+        // The suite helper turns rate limiting off; this suite needs it on.
+        delete process.env.AUTH_RATE_LIMIT;
         createAuth();
     });
 
     after(async () => {
-        process.env.NODE_ENV = original;
+        if (original === undefined) delete process.env.AUTH_RATE_LIMIT;
+        else process.env.AUTH_RATE_LIMIT = original;
         for (const r of running) {
             r.server.closeAllConnections();
             await new Promise((resolve) => r.server.close(resolve));
@@ -80,12 +81,12 @@ describe("sign-in rate limit", () => {
         await pool.end();
     });
 
-    it("is off under NODE_ENV=test", () => {
-        process.env.NODE_ENV = "test";
+    it("is off when AUTH_RATE_LIMIT=off", () => {
+        process.env.AUTH_RATE_LIMIT = "off";
         try {
             assert.equal(createAuth().options.rateLimit?.enabled, false);
         } finally {
-            process.env.NODE_ENV = "development";
+            delete process.env.AUTH_RATE_LIMIT;
             createAuth();
         }
     });

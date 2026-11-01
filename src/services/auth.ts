@@ -24,11 +24,12 @@ export const CLIENT_IP_HEADER = "x-tessellate-client-ip";
 
 /**
  * better-auth's sign-in rate limit (3 per 10 s on /sign-in/*, 100 per 10 s
- * elsewhere, per client IP) is on everywhere except under NODE_ENV=test,
- * where the suite signs in repeatedly from one address.
+ * elsewhere, per client IP) is on unless AUTH_RATE_LIMIT=off, which only the
+ * test suite sets (it signs in repeatedly from one address). NODE_ENV=test is
+ * avoided because better-auth then skips its origin checks too.
  */
 function rateLimitEnabled(): boolean {
-    return process.env.NODE_ENV !== "test";
+    return process.env.AUTH_RATE_LIMIT !== "off";
 }
 
 type GenericOAuthConfig = Parameters<typeof genericOAuth>[0]["config"];
