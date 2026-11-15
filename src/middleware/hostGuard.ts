@@ -8,7 +8,7 @@ import {
 
 /**
  * Builds the host middleware: ALLOWED_HOSTS (421) and the public-host guard
- * (404 for anything but /gateway/*, /webhooks/* and /health on PUBLIC_URL's
+ * (404 for anything but /gateway/*, /webhooks/*, /member/* and /health on PUBLIC_URL's
  * host). Keys off the raw Host header (port stripped), never X-Forwarded-Host, which a
  * client can set; `trust proxy` is only for req.protocol and req.ip.
  * @param config the configuration to enforce

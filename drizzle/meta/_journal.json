@@ -120,6 +120,13 @@
       "when": 1793484001108,
       "tag": "0016_online_payment_expiry",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794754241120,
+      "tag": "0017_members",
+      "breakpoints": true
     }
   ]
 }

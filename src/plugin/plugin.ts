@@ -7,6 +7,7 @@ import {
 } from "@tessellatepos/plugin-sdk";
 import type {
     AuthProvider,
+    MemberAuthProvider,
     PaymentProcessor,
     HookContext,
     HookDefinition,
@@ -14,6 +15,10 @@ import type {
     EventDefinition,
 } from "@tessellatepos/plugin-sdk/server";
 import { validateAuthProvider } from "@/auth/providers";
+import {
+    MemberAuthError,
+    validateMemberAuthProvider,
+} from "@/auth/members/providers";
 import { validatePaymentProcessor } from "@/services/processors/plugin";
 
 interface PluginMounts {
@@ -21,6 +26,7 @@ interface PluginMounts {
     api: PluginApiMountDefinition[];
     database: PluginDatabaseMount[];
     auth: AuthProvider[];
+    memberAuth: MemberAuthProvider[];
     paymentProcessor: PaymentProcessor[];
 }
 
@@ -35,6 +41,7 @@ export class Plugin {
         api: [],
         database: [],
         auth: [],
+        memberAuth: [],
         paymentProcessor: [],
     };
     private hookHandlers: Map<string, HookHandler[]> = new Map();
@@ -74,6 +81,16 @@ export class Plugin {
                 mount,
             );
         }
+        if (kind === "memberAuth") {
+            validateMemberAuthProvider(
+                this.manifest.name,
+                this.permissions.memberAuth,
+                mount,
+            );
+        }
+        if (kind === "api") {
+            this.validateApiMount(mount as PluginApiMountDefinition);
+        }
         if (kind === "paymentProcessor") {
             validatePaymentProcessor(
                 this.manifest.name,
@@ -82,6 +99,34 @@ export class Plugin {
             );
         }
         (this.mounts[kind] as PluginMounts[K][number][]).push(mount);
+    }
+
+    // A "member" route is served on the public member surface, so it needs
+    // the permission, stays off the gateway, and cannot shadow the host's own
+    // /auth routes there.
+    private validateApiMount(mount: PluginApiMountDefinition) {
+        const name = this.manifest.name;
+        if (mount.access === undefined || mount.access === "staff") return;
+        if (mount.access !== "member") {
+            throw new MemberAuthError(
+                `Plugin "${name}": route "${mount.route}" access must be "staff" or "member"`,
+            );
+        }
+        if (!this.permissions.memberAuth) {
+            throw new MemberAuthError(
+                `Plugin "${name}" declared a member route without the MEMBER_AUTH permission; add "MEMBER_AUTH" to tessellate.permissions in its package.json`,
+            );
+        }
+        if (mount.gateway) {
+            throw new MemberAuthError(
+                `Plugin "${name}": member route "${mount.route}" cannot also be exposed through the gateway`,
+            );
+        }
+        if (mount.route === "/auth" || mount.route.startsWith("/auth/")) {
+            throw new MemberAuthError(
+                `Plugin "${name}": member route "${mount.route}" is reserved for the host's member sign-in`,
+            );
+        }
     }
 
     public get<K extends keyof PluginMounts>(kind: K): PluginMounts[K] {

@@ -3,6 +3,7 @@ import { resolvePluginAsset } from "@/utils/pluginAssets";
 import path from "node:path";
 import type { Express, RequestHandler } from "express";
 import { Logger } from "tslog";
+import { createMemberRouter } from "@/members/memberRouter";
 import { requireAuthenticated } from "@/middleware/authenticate";
 import { TessellatePluginApiRegistry } from "@/utils/registry/api/pluginApiRegistry";
 import type { CoreGatewayOperation } from "@/gateway/registry";
@@ -72,6 +73,13 @@ export class TessellateApiRegistry {
             "/plugins/:pluginName",
             requireAuthenticated,
             this.pluginApiRegistry.dispatch,
+        );
+
+        // Member surface: sign-in for a plugin's own members, then the
+        // plugin's routes declared with access: "member".
+        this.app.use(
+            "/member/:pluginName",
+            createMemberRouter({ pluginApi: this.pluginApiRegistry }),
         );
     }
 

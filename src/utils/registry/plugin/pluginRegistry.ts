@@ -11,6 +11,7 @@ import type {
 import { Logger } from "tslog";
 import { TessellatePluginDatabaseRegistry } from "@/utils/registry/database/pluginDatabaseRegistry";
 import { authProviders } from "@/auth/providers";
+import { memberProviders } from "@/auth/members/providers";
 import {
     processorRegistry,
     type PaymentProcessorRegistry,
@@ -86,6 +87,18 @@ export class TessellatePluginRegistry {
             throw err;
         }
 
+        // Member logins too: ids are unique per plugin, so this only fails on
+        // a duplicate inside the plugin itself.
+        try {
+            for (const provider of plugin.get("memberAuth")) {
+                memberProviders.register({ pluginName: name, provider });
+            }
+        } catch (err) {
+            memberProviders.removePlugin(name);
+            authProviders.removePlugin(name);
+            throw err;
+        }
+
         // Processors next, for the same reason: an id clash refuses the whole
         // plugin. Registered under the id the plugin declared, which
         // validation tied to the plugin's name.
@@ -97,6 +110,7 @@ export class TessellatePluginRegistry {
             }
         } catch (err) {
             for (const id of added) this.processors.unregister(id);
+            memberProviders.removePlugin(name);
             authProviders.removePlugin(name);
             throw err;
         }
@@ -132,6 +146,7 @@ export class TessellatePluginRegistry {
             this.processors.unregister(processor.id);
         }
         authProviders.removePlugin(name);
+        memberProviders.removePlugin(name);
         this.apiRegistry.unregister(name);
         this.databaseRegistry.unregister(name);
         this.plugins.delete(name);
@@ -218,6 +233,34 @@ export class TessellatePluginRegistry {
                         ),
                     );
             }
+        }
+    }
+
+    /**
+     * Like emit, but only the named plugin is called, and outbound gateway
+     * webhooks never see it. Used for member events, which belong to the
+     * plugin whose login created the member.
+     * @param pluginName the plugin to call
+     * @param def the event
+     * @param args the event arguments
+     */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- any[] needed for Parameters<THandler> to extract arg types
+    public emitToPlugin<THandler extends (...args: any[]) => void>(
+        pluginName: string,
+        def: EventDefinition<THandler>,
+        ...args: Parameters<THandler>
+    ): void {
+        const plugin = this.plugins.get(pluginName);
+        if (!plugin?.getPermissions().memberAuth) return;
+        for (const handler of plugin.getEventListeners(def.name)) {
+            Promise.resolve()
+                .then(() => handler(...args))
+                .catch((err) =>
+                    logger.error(
+                        `Plugin event "${def.name}" handler error:`,
+                        err,
+                    ),
+                );
         }
     }
 

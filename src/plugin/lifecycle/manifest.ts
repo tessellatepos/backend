@@ -128,5 +128,6 @@ export function grantedPermissions(
         auth: requested.has(PluginPermission.AUTH),
         customer: requested.has(PluginPermission.CUSTOMER),
         payment: requested.has(PluginPermission.PAYMENT),
+        memberAuth: requested.has(PluginPermission.MEMBER_AUTH),
     };
 }

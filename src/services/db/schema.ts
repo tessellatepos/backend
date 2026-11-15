@@ -83,6 +83,85 @@ export const authProviderSettingsTable = pgTable("tessellate-auth-providers", {
 });
 
 /**
+ * People who sign in through a plugin's member login. They are not host
+ * users: no roles, no staff sessions. `plugin` + `provider` + `external_id`
+ * identify the person at the provider. `customer_id` is a soft link to the
+ * customers table, set by staff.
+ */
+export const membersTable = pgTable(
+    "tessellate-members",
+    {
+        id: varchar("id", { length: 64 }).primaryKey(),
+        plugin: text("plugin").notNull(),
+        provider: text("provider").notNull(),
+        external_id: text("external_id").notNull(),
+        display_name: text("display_name").notNull().default(""),
+        email: text("email").notNull().default(""),
+        // "active" | "pending" | "disabled"
+        status: text("status").notNull(),
+        customer_id: text("customer_id"),
+        created_at: timestamp("created_at", { withTimezone: true })
+            .defaultNow()
+            .notNull(),
+        updated_at: timestamp("updated_at", { withTimezone: true })
+            .defaultNow()
+            .notNull(),
+        last_login_at: timestamp("last_login_at", { withTimezone: true }),
+    },
+    (table) => [
+        uniqueIndex("tessellate_members_identity").on(
+            table.plugin,
+            table.provider,
+            table.external_id,
+        ),
+        index("tessellate_members_plugin_status").on(
+            table.plugin,
+            table.status,
+        ),
+    ],
+);
+
+/**
+ * Member sessions. Only the SHA-256 of the token is stored. Deleting or
+ * disabling a member removes its sessions.
+ */
+export const memberSessionsTable = pgTable(
+    "tessellate-member-sessions",
+    {
+        token_hash: text("token_hash").primaryKey(),
+        member_id: varchar("member_id", { length: 64 })
+            .notNull()
+            .references(() => membersTable.id, { onDelete: "cascade" }),
+        expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+        created_at: timestamp("created_at", { withTimezone: true })
+            .defaultNow()
+            .notNull(),
+    },
+    (table) => [index("tessellate_member_sessions_member").on(table.member_id)],
+);
+
+/**
+ * Owner-managed settings for plugin member logins. `config` is a JSON
+ * document (client id and secret) encrypted with services/crypto.ts; it is
+ * never stored or returned in plaintext.
+ */
+export const memberSourcesTable = pgTable(
+    "tessellate-member-sources",
+    {
+        plugin: text("plugin").notNull(),
+        provider: text("provider").notNull(),
+        enabled: boolean("enabled").notNull().default(false),
+        // null keeps the plugin's own choice.
+        signup: text("signup"),
+        config: text("config").notNull(),
+        updated_at: timestamp("updated_at", { withTimezone: true })
+            .notNull()
+            .defaultNow(),
+    },
+    (table) => [primaryKey({ columns: [table.plugin, table.provider] })],
+);
+
+/**
  * First-run setup state: a single row (id 1) once setup has been marked
  * complete. Kept apart from the system config, whose Square token columns
  * are required.
