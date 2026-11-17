@@ -33,11 +33,11 @@ function rowToLocation(row: typeof locationsTable.$inferSelect): Location {
         name: row.name,
         address: row.address as Address,
         currency: row.currency as CurrencyCode,
-        phone_number: emptyIfNull(row.phoneNumber),
-        website_url: emptyIfNull(row.websiteUrl),
+        phoneNumber: emptyIfNull(row.phoneNumber),
+        websiteUrl: emptyIfNull(row.websiteUrl),
         email: emptyIfNull(row.email),
         hours: (row.hours as LocationHours | null) ?? EMPTY_HOURS,
-        logo_url: emptyIfNull(row.logoUrl),
+        logoUrl: emptyIfNull(row.logoUrl),
     };
 }
 
@@ -52,11 +52,11 @@ function locationToRow(location: Location): typeof locationsTable.$inferInsert {
         name: location.name,
         address: location.address,
         currency: location.currency,
-        phoneNumber: nullIfEmpty(location.phone_number),
-        websiteUrl: nullIfEmpty(location.website_url),
+        phoneNumber: nullIfEmpty(location.phoneNumber),
+        websiteUrl: nullIfEmpty(location.websiteUrl),
         email: nullIfEmpty(location.email),
         hours: location.hours,
-        logoUrl: nullIfEmpty(location.logo_url),
+        logoUrl: nullIfEmpty(location.logoUrl),
     };
 }
 
@@ -103,13 +103,13 @@ export async function createLocalLocation(input: {
     const location: Location = {
         id: `local-${crypto.randomUUID().slice(0, 8)}`,
         name: input.name,
-        address: { country: input.country, address_line_1: "" },
+        address: { country: input.country, addressLine1: "" },
         currency: input.currency,
-        phone_number: "",
-        website_url: "",
+        phoneNumber: "",
+        websiteUrl: "",
         email: "",
         hours: EMPTY_HOURS,
-        logo_url: "",
+        logoUrl: "",
     };
     await locationStore.upsert(location);
     return location;

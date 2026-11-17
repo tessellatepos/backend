@@ -188,12 +188,12 @@ describe("customers and locations", () => {
         const parsed = locationSchema.parse({
             id: "L1",
             name: "Main",
-            address: { country: "CA", address_line_1: "1 Main St" },
+            address: { country: "CA", addressLine1: "1 Main St" },
             currency: "CAD",
-            phone_number: "",
-            website_url: "",
+            phoneNumber: "",
+            websiteUrl: "",
             email: "",
-            logo_url: "",
+            logoUrl: "",
             hours: {
                 sunday: [],
                 monday: day,

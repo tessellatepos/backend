@@ -26,29 +26,29 @@ export const configDevicesTable = pgTable(
     "tessellate-devices-config",
     {
         id: varchar("id", { length: 12 }).primaryKey(),
-        created_at: timestamp("entry_created_at", {
+        createdAt: timestamp("entry_created_at", {
             withTimezone: true,
         }).defaultNow(),
-        pairing_code: varchar("paring_code", { length: 8 }),
-        code_created_at: timestamp("code_created_at", {
+        pairingCode: varchar("paring_code", { length: 8 }),
+        codeCreatedAt: timestamp("code_created_at", {
             withTimezone: true,
         }).defaultNow(),
-        paired_at: timestamp("paired_at", { withTimezone: true }),
-        square_location: varchar("square_location", { length: 255 }),
-        customer_facing: boolean(),
-        device_hardware_id: text("device_hardware_id"),
-        device_type: deviceTypeEnum("device_type"),
-        square_device_id: text("square_device_id"),
-        square_device_code_id: text("square_device_code_id"),
-        square_pair_by: timestamp("square_pair_by", { withTimezone: true }),
+        pairedAt: timestamp("paired_at", { withTimezone: true }),
+        squareLocation: varchar("square_location", { length: 255 }),
+        customerFacing: boolean("customer_facing"),
+        deviceHardwareId: text("device_hardware_id"),
+        deviceType: deviceTypeEnum("device_type"),
+        squareDeviceId: text("square_device_id"),
+        squareDeviceCodeId: text("square_device_code_id"),
+        squarePairBy: timestamp("square_pair_by", { withTimezone: true }),
         // sha-256 (hex) of the device's API token; the token itself is never stored.
         device_token_hash: text("device_token_hash").unique(),
     },
     (table) => [
         // At most one LOCAL till per location, so concurrent creates cannot race.
         uniqueIndex("tessellate_devices_one_local_per_location")
-            .on(table.square_location)
-            .where(sql`tessellate_is_local_till(${table.device_type})`),
+            .on(table.squareLocation)
+            .where(sql`tessellate_is_local_till(${table.deviceType})`),
     ],
 );
 

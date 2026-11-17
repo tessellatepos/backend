@@ -13,14 +13,14 @@ type TDeviceDB = Pick<TDrizzleDB, "select" | "insert" | "delete">;
 export async function createConfigDevice(db: TDrizzleDB = drizzleDB) {
     const deviceConfig: typeof configDevicesTable.$inferInsert = {
         id: generateDeviceNanoID(),
-        created_at: new Date(),
-        pairing_code: generatePairingCode(),
-        code_created_at: new Date(),
-        paired_at: null,
-        square_location: null,
-        customer_facing: false,
-        device_hardware_id: null,
-        device_type: null,
+        createdAt: new Date(),
+        pairingCode: generatePairingCode(),
+        codeCreatedAt: new Date(),
+        pairedAt: null,
+        squareLocation: null,
+        customerFacing: false,
+        deviceHardwareId: null,
+        deviceType: null,
     };
 
     await db.insert(configDevicesTable).values(deviceConfig);
@@ -32,13 +32,13 @@ export async function getAllConfigDevices(db: TDrizzleDB = drizzleDB) {
 }
 
 export async function getConfigDeviceByPairingCode(
-    pairing_code: string,
+    pairingCode: string,
     db: TDrizzleDB = drizzleDB,
 ) {
     const deviceConfig = await db
         .select()
         .from(configDevicesTable)
-        .where(eq(configDevicesTable.pairing_code, pairing_code))
+        .where(eq(configDevicesTable.pairingCode, pairingCode))
         .limit(1);
     return deviceConfig[0] || null;
 }
@@ -93,14 +93,14 @@ export async function createLocalDevice(
     const now = new Date();
     const deviceConfig: typeof configDevicesTable.$inferInsert = {
         id: generateDeviceNanoID(),
-        created_at: now,
-        pairing_code: null,
-        code_created_at: null,
-        paired_at: now,
-        square_location: locationId,
-        customer_facing: false,
-        device_hardware_id: null,
-        device_type: "LOCAL",
+        createdAt: now,
+        pairingCode: null,
+        codeCreatedAt: null,
+        pairedAt: now,
+        squareLocation: locationId,
+        customerFacing: false,
+        deviceHardwareId: null,
+        deviceType: "LOCAL",
     };
     // A concurrent create for the same location loses here and gets the row
     // the winner inserted, so the till is never duplicated.
@@ -108,8 +108,8 @@ export async function createLocalDevice(
         .insert(configDevicesTable)
         .values(deviceConfig)
         .onConflictDoNothing({
-            target: configDevicesTable.square_location,
-            where: sql`tessellate_is_local_till(${configDevicesTable.device_type})`,
+            target: configDevicesTable.squareLocation,
+            where: sql`tessellate_is_local_till(${configDevicesTable.deviceType})`,
         })
         .returning({ id: configDevicesTable.id });
     if (inserted.length > 0) {
@@ -139,8 +139,8 @@ export async function getLocalDeviceForLocation(
         .from(configDevicesTable)
         .where(
             and(
-                eq(configDevicesTable.device_type, "LOCAL"),
-                eq(configDevicesTable.square_location, locationId),
+                eq(configDevicesTable.deviceType, "LOCAL"),
+                eq(configDevicesTable.squareLocation, locationId),
             ),
         )
         .limit(1);
@@ -155,7 +155,7 @@ export async function getLocalDevices(db: TDeviceDB = drizzleDB) {
     return db
         .select()
         .from(configDevicesTable)
-        .where(eq(configDevicesTable.device_type, "LOCAL"));
+        .where(eq(configDevicesTable.deviceType, "LOCAL"));
 }
 
 /**
@@ -171,8 +171,8 @@ export async function deleteLocalDevicesForLocation(
         .delete(configDevicesTable)
         .where(
             and(
-                eq(configDevicesTable.device_type, "LOCAL"),
-                eq(configDevicesTable.square_location, locationId),
+                eq(configDevicesTable.deviceType, "LOCAL"),
+                eq(configDevicesTable.squareLocation, locationId),
             ),
         );
 }
@@ -181,21 +181,21 @@ export async function getPairedDeviceByType(
     deviceType: DeviceType,
     db: TDrizzleDB = drizzleDB,
 ) {
-    // TERMINAL devices pair through Square's own Device Code flow (square_device_id);
-    // MOBILE_READER devices pair through our OTP flow (device_hardware_id).
-    // LOCAL devices are filtered out by device_type and never match here.
+    // TERMINAL devices pair through Square's own Device Code flow (squareDeviceId);
+    // MOBILE_READER devices pair through our OTP flow (deviceHardwareId).
+    // LOCAL devices are filtered out by deviceType and never match here.
     const pairingIdentifierColumn =
         deviceType === "TERMINAL"
-            ? configDevicesTable.square_device_id
-            : configDevicesTable.device_hardware_id;
+            ? configDevicesTable.squareDeviceId
+            : configDevicesTable.deviceHardwareId;
 
     const deviceConfig = await db
         .select()
         .from(configDevicesTable)
         .where(
             and(
-                eq(configDevicesTable.device_type, deviceType),
-                isNotNull(configDevicesTable.paired_at),
+                eq(configDevicesTable.deviceType, deviceType),
+                isNotNull(configDevicesTable.pairedAt),
                 isNotNull(pairingIdentifierColumn),
             ),
         )

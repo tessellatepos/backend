@@ -258,7 +258,7 @@ describe("DEV_SEED", () => {
                 await import("@/services/db/configDevice");
             const till = await getLocalDeviceForLocation(store.id);
             assert.ok(till, "a LOCAL till is pinned to the store");
-            assert.equal(till.device_type, "LOCAL");
+            assert.equal(till.deviceType, "LOCAL");
 
             const { getStoredProvider } =
                 await import("@/services/db/configProvider");

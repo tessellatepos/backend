@@ -26,8 +26,8 @@ describe("pinning a device to a location created by the setup wizard", () => {
         assert.equal(locationId.length, 16);
         const device = await createConfigDevice();
         deviceId = device.id;
-        await updateConfigDevice(deviceId, { square_location: locationId });
+        await updateConfigDevice(deviceId, { squareLocation: locationId });
         const stored = await getConfigDeviceByID(deviceId);
-        assert.equal(stored?.square_location, locationId);
+        assert.equal(stored?.squareLocation, locationId);
     });
 });

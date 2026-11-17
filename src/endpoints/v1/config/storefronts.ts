@@ -33,7 +33,7 @@ storefrontRouter.get("/", requireScope("settings:read"), async (_req, res) => {
         const info = providerInfo[getActiveProviderId()];
         const locations = await getLocations();
         const tillByLocation = new Map(
-            (await getLocalDevices()).map((d) => [d.square_location, d.id]),
+            (await getLocalDevices()).map((d) => [d.squareLocation, d.id]),
         );
         const storefronts = locations.map((location) => ({
             ...location,

@@ -15,10 +15,10 @@ export function makeLocation(id: string, name: string): Location {
     return {
         id,
         name,
-        address: { country: "CA", address_line_1: `${name} street` },
+        address: { country: "CA", addressLine1: `${name} street` },
         currency: "CAD",
-        phone_number: "",
-        website_url: "",
+        phoneNumber: "",
+        websiteUrl: "",
         email: "",
         hours: {
             sunday: [],
@@ -29,7 +29,7 @@ export function makeLocation(id: string, name: string): Location {
             friday: [],
             saturday: [],
         },
-        logo_url: "",
+        logoUrl: "",
     };
 }
 

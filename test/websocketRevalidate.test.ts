@@ -103,8 +103,8 @@ for (const [name, intervalMs] of [
             const d = await createConfigDevice();
             deviceIds.push(d.id);
             await updateConfigDevice(d.id, {
-                pairing_code: null,
-                paired_at: new Date(),
+                pairingCode: null,
+                pairedAt: new Date(),
             });
             return { id: d.id, token: (await issueDeviceToken(d.id))! };
         }
@@ -252,8 +252,8 @@ describe("websocket revalidation with a failing lookup", () => {
         const d = await createConfigDevice();
         deviceIds.push(d.id);
         await updateConfigDevice(d.id, {
-            pairing_code: null,
-            paired_at: new Date(),
+            pairingCode: null,
+            pairedAt: new Date(),
         });
         const token = (await issueDeviceToken(d.id))!;
         const c = await open(`${base}?access_token=${token}`);

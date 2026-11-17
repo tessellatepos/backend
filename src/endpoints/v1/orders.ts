@@ -73,7 +73,7 @@ const logger = new Logger();
 async function isLocalTill(deviceId: unknown): Promise<boolean> {
     if (typeof deviceId !== "string" || !deviceId) return false;
     const device = await getConfigDeviceByID(deviceId);
-    return device?.device_type === "LOCAL";
+    return device?.deviceType === "LOCAL";
 }
 
 /**
@@ -747,7 +747,7 @@ orderRouter.post(
             let deviceId = "";
             if (providerInfo[getActiveProviderId()].requiresTerminalDevice) {
                 const terminalDevice = await getPairedDeviceByType("TERMINAL");
-                deviceId = terminalDevice?.square_device_id ?? "";
+                deviceId = terminalDevice?.squareDeviceId ?? "";
                 if (!deviceId) {
                     logger.error(
                         "No Square-paired Terminal device is configured",

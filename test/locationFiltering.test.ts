@@ -50,13 +50,13 @@ describe("location filtering for pinned principals", () => {
     let unpinnedToken: string;
     const deviceIds: string[] = [];
 
-    async function device(square_location: string | null) {
+    async function device(squareLocation: string | null) {
         const d = await createConfigDevice();
         deviceIds.push(d.id);
         await updateConfigDevice(d.id, {
-            pairing_code: null,
-            paired_at: new Date(),
-            square_location,
+            pairingCode: null,
+            pairedAt: new Date(),
+            squareLocation,
         });
         return { id: d.id, token: (await issueDeviceToken(d.id))! };
     }
