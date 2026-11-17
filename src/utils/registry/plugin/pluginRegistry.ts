@@ -115,6 +115,7 @@ export class TessellatePluginRegistry {
             logger.debug(`Provisioning Plugin ${name}'s database tables`);
             await this.databaseRegistry.register(name, databaseMounts);
         }
+        this.databaseRegistry.setTableHooks(name, plugin.getTableHooks());
     }
 
     /**
