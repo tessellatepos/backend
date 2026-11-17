@@ -32,6 +32,7 @@ const none: PluginPermissionProvider = {
     order: false,
     customer: false,
     auth: false,
+    memberAuth: false,
     payment: false,
 };
 

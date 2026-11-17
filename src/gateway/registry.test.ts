@@ -211,6 +211,7 @@ describe("plugin gateway declarations", () => {
         order: false,
         customer: false,
         auth: false,
+        memberAuth: false,
         payment: false,
     };
 

@@ -23,7 +23,8 @@ function getPluginRegistry(req: express.Request): TessellatePluginRegistry {
 /**
  * GET /api/v1/plugins-discovery
  *
- * Returns the list of installed plugins. Each entry includes a
+ * Returns the list of installed plugins with their display metadata
+ * (description, author, license, homepage, permissions). Each entry includes a
  * `clientEntryUrl` only if the plugin has a built client bundle
  * (dist/client.js) on disk — server-only plugins are listed without one.
  *
@@ -47,9 +48,19 @@ pluginRouter.get("/", (req, res) => {
 
         const hasClientBundle = existsSync(clientBundlePath);
 
+        const author =
+            typeof manifest.author === "string"
+                ? manifest.author
+                : manifest.author?.name;
+
         return {
             name,
             version: manifest.version,
+            description: manifest.description ?? null,
+            author: author ?? null,
+            license: manifest.license ?? null,
+            homepage: manifest.homepage ?? null,
+            permissions: manifest.tessellate.permissions,
             clientEntryUrl: hasClientBundle
                 ? `/plugins/${name}/assets/client.js`
                 : null,

@@ -5,6 +5,7 @@
  *
  * - "gateway":  /gateway/*  (credential auth only, own CORS)
  * - "webhook":  /webhooks/* (signature verification, no CORS)
+ * - "member":   /member/*   (plugin member sessions only, own CORS)
  * - "internal": everything else (staff sessions, same-origin only)
  *
  * This module intentionally contains no auth logic yet.
@@ -12,7 +13,7 @@
 import type { NextFunction, Request, Response } from "express";
 
 /** Which part of the API a request targets. */
-export type Surface = "gateway" | "webhook" | "internal";
+export type Surface = "gateway" | "webhook" | "member" | "internal";
 
 declare global {
     // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -33,6 +34,7 @@ export function surfaceOf(path: string): Surface {
     const p = path.toLowerCase();
     if (p === "/gateway" || p.startsWith("/gateway/")) return "gateway";
     if (p === "/webhooks" || p.startsWith("/webhooks/")) return "webhook";
+    if (p === "/member" || p.startsWith("/member/")) return "member";
     return "internal";
 }
 

@@ -2,6 +2,7 @@ import { match, type MatchFunction } from "path-to-regexp";
 import type { RequestHandler } from "express";
 import { Logger } from "tslog";
 import type {
+    PluginApiAccess,
     PluginApiMountDefinition,
     PluginApiMethod,
     PluginApiRequest,
@@ -12,6 +13,7 @@ import type { PluginServerContext } from "@tessellatepos/plugin-sdk/server";
 import { getActiveProvider } from "@/services/providers";
 import { getItemById } from "@/services/redis";
 import { findCustomers, getCustomer } from "@/services/customers";
+import { getMember, listMembers } from "@/services/members";
 import { TessellatePluginDatabaseRegistry } from "@/utils/registry/database/pluginDatabaseRegistry";
 import { pluginEntry, type GatewayEntry } from "@/gateway/registry";
 
@@ -19,6 +21,7 @@ const logger = new Logger();
 
 interface RegisteredRoute {
     pluginName: string;
+    access: PluginApiAccess;
     method: PluginApiMethod;
     matcher: MatchFunction<Record<string, string>>;
     handler: PluginApiMountDefinition["handler"];
@@ -42,6 +45,16 @@ export function buildPluginServerContext(
         if (!permissions.customer) {
             throw new Error(
                 `Plugin "${pluginName}" lacks the CUSTOMER permission`,
+            );
+        }
+    };
+
+    // Member data is PII: a plugin without MEMBER_AUTH gets a rejected
+    // promise, and a plugin only ever sees members its own login created.
+    const requireMemberAuth = () => {
+        if (!permissions.memberAuth) {
+            throw new Error(
+                `Plugin "${pluginName}" lacks the MEMBER_AUTH permission`,
             );
         }
     };
@@ -84,6 +97,17 @@ export function buildPluginServerContext(
             requireCustomer();
             return findCustomers(query);
         },
+        members: {
+            get: async (memberId: string) => {
+                requireMemberAuth();
+                const member = await getMember(memberId);
+                return member?.plugin === pluginName ? member : null;
+            },
+            find: async (query) => {
+                requireMemberAuth();
+                return listMembers({ ...query, plugin: pluginName });
+            },
+        },
     };
 }
 
@@ -102,6 +126,7 @@ export class TessellatePluginApiRegistry {
     ) {
         this.routes.push({
             pluginName,
+            access: mount.access ?? "staff",
             method: mount.method,
             matcher: match(mount.route),
             handler: mount.handler,
@@ -132,7 +157,30 @@ export class TessellatePluginApiRegistry {
         return this.routes.flatMap((r) => (r.gateway ? [r.gateway] : []));
     }
 
-    public dispatch: RequestHandler = async (req, res, next) => {
+    /** Serves staff routes at /plugins/:pluginName/*. */
+    public dispatch: RequestHandler = (req, res, next) =>
+        this.dispatchAccess("staff", req, res, next);
+
+    /**
+     * Serves member routes at /member/:pluginName/*. Mounted behind the
+     * member surface, so `req.principal` is a member of this plugin or null.
+     */
+    public dispatchMember: RequestHandler = (req, res, next) => {
+        const principal = req.principal;
+        if (
+            principal?.kind !== "member" ||
+            principal.plugin !== req.params.pluginName
+        ) {
+            res.status(401).json({ message: "Unauthorized" });
+            return;
+        }
+        return this.dispatchAccess("member", req, res, next);
+    };
+
+    private dispatchAccess: (
+        access: PluginApiAccess,
+        ...args: Parameters<RequestHandler>
+    ) => Promise<void> = async (access, req, res, next) => {
         // The dispatcher is mounted at /plugins/:pluginName, so
         // req.params.pluginName tells us which plugin's routes to check.
         // This scopes API calls so a plugin can only hit its own mounts.
@@ -140,6 +188,7 @@ export class TessellatePluginApiRegistry {
 
         for (const route of this.routes) {
             if (route.pluginName !== pluginName) continue;
+            if (route.access !== access) continue;
             if (route.method !== req.method) continue;
             const matched = route.matcher(req.path);
             if (!matched) continue;

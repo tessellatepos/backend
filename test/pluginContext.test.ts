@@ -12,6 +12,7 @@ const noPermissions = {
     device: false,
     order: false,
     auth: false,
+    memberAuth: false,
     payment: false,
     customer: false,
 };

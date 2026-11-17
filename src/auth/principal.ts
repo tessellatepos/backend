@@ -4,6 +4,8 @@ import type { Principal, PrincipalKind } from "@tessellatepos/sdk";
 import { getAuth } from "@/services/auth";
 import { resolveDeviceToken } from "@/auth/deviceToken";
 import { parseRoles, scopesForRoles } from "@/auth/roles";
+import { extractMemberToken } from "@/auth/members/sessions";
+import { resolveMemberPrincipal } from "@/services/members";
 
 /** Kinds an extra resolver may produce. Users and devices are built in. */
 export type ExtraPrincipalKind = Extract<
@@ -84,9 +86,31 @@ async function resolveDevice(req: Request): Promise<Principal | null> {
     return match ? resolveDeviceToken(match[1]) : null;
 }
 
+// /member/<plugin>/... : the plugin in the path is the only one a session may
+// act for, so a member of one plugin never reaches another plugin's routes.
+async function resolveMemberSession(
+    req: Request,
+    strict: boolean,
+): Promise<Principal | null> {
+    const plugin = /^\/member\/([^/]+)/i.exec(req.path)?.[1];
+    const token = extractMemberToken(
+        req.headers.cookie,
+        req.headers.authorization,
+    );
+    if (!plugin || !token) return null;
+    try {
+        return await resolveMemberPrincipal(token, decodeURIComponent(plugin));
+    } catch (error) {
+        if (strict) throw error;
+        return null;
+    }
+}
+
 /**
  * Resolves who is making a request. The gateway surface only ever sees
- * credential resolvers; the internal surface tries a better-auth session
+ * credential resolvers; the member surface only ever sees a plugin member's
+ * session (never staff sessions, devices or credentials), and the internal
+ * surface never accepts a member session; the internal surface tries a better-auth session
  * (cookie or bearer), then a device token, then extra "service" resolvers, and never credentials.
  * Webhooks authenticate by signature, so they get no principal.
  * @param req the request, tagged with `req.surface`
@@ -101,6 +125,7 @@ export async function resolvePrincipal(
     const surface = req.surface ?? "internal";
     if (surface === "gateway") return runExtra(req, "credential");
     if (surface === "webhook") return null;
+    if (surface === "member") return resolveMemberSession(req, strict);
 
     try {
         const user = await resolveSession(req);

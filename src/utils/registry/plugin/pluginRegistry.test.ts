@@ -15,6 +15,7 @@ const permissions = (customer: boolean) => ({
     order: false,
     customer,
     auth: false,
+    memberAuth: false,
     payment: false,
 });
 

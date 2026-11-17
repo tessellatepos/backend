@@ -18,6 +18,8 @@ export const ROLE_SCOPES: Readonly<Record<Role, readonly Scope[]>> = {
         "devices:read",
         "devices:write",
         "users:read",
+        "members:read",
+        "members:write",
         "dashboard:read",
         "settings:read",
         "payments:read",

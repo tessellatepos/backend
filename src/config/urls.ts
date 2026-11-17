@@ -52,6 +52,11 @@ export interface UrlConfig {
     authBaseUrl: string | undefined;
     /** Origins allowed to make cross-origin calls to internal routes. */
     corsOrigins: string[];
+    /**
+     * Extra origins (MEMBER_ORIGINS) a plugin's member site may call the
+     * member surface from, with credentials, and be sent back to after login.
+     */
+    memberOrigins: string[];
     /** True outside production: any local dev port is trusted as an origin. */
     allowDevOrigins: boolean;
 }
@@ -172,6 +177,11 @@ export function loadUrlConfig(
         env.NODE_ENV !== "production" ? DEV_FRONTEND_ORIGIN : undefined,
     ].filter((o): o is string => !!o);
 
+    const memberOrigins = (trimmed(env.MEMBER_ORIGINS) ?? "")
+        .split(",")
+        .map((o) => originOf(o.trim()))
+        .filter((o): o is string => !!o);
+
     return {
         publicUrl,
         publicHost: url ? url.hostname.toLowerCase() : null,
@@ -182,6 +192,7 @@ export function loadUrlConfig(
         squareRedirectUrl,
         authBaseUrl: trimmed(env.BETTER_AUTH_URL),
         corsOrigins: [...new Set(corsOrigins)],
+        memberOrigins: [...new Set(memberOrigins)],
         allowDevOrigins: env.NODE_ENV !== "production",
     };
 }
@@ -277,7 +288,7 @@ export function isHostAllowed(
 /**
  * Whether a path may be served on the public host while admin is not exposed.
  * @param path request path
- * @returns true for /gateway/*, /webhooks/* and /health
+ * @returns true for /gateway/*, /webhooks/*, /member/* and /health
  */
 export function isPublicPath(path: string): boolean {
     const p = path.toLowerCase();
@@ -286,7 +297,9 @@ export function isPublicPath(path: string): boolean {
         p === "/gateway" ||
         p.startsWith("/gateway/") ||
         p === "/webhooks" ||
-        p.startsWith("/webhooks/")
+        p.startsWith("/webhooks/") ||
+        p === "/member" ||
+        p.startsWith("/member/")
     );
 }
 

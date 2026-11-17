@@ -52,6 +52,13 @@ const PUBLIC = [
     // processor's signature over the raw body is the authentication (an
     // unsigned or tampered request gets 401, see processorWebhooks.test.ts)
     "POST /webhooks/:processorId",
+    // a plugin's members sign in here with no staff credentials; the member
+    // surface only ever honours member sessions (see members.test.ts), and
+    // /member/:pluginName/auth/me answers 401 without one
+    "GET /member/:pluginName/auth/providers",
+    "GET /member/:pluginName/auth/:providerId/start",
+    "GET /member/:pluginName/auth/:providerId/callback",
+    "POST /member/:pluginName/auth/logout",
 ];
 
 interface RouteEntry {
@@ -79,6 +86,22 @@ function inventory(app: Express): RouteEntry[] {
         if (layer.route) {
             for (const method of methodsOf(layer.route)) {
                 found.push({ method, path: layer.route.path });
+            }
+        } else if (
+            (layer.handle as { memberSurface?: true }).memberSurface &&
+            layer.handle.stack
+        ) {
+            for (const inner of layer.handle.stack) {
+                if (!inner.route) continue;
+                for (const method of methodsOf(inner.route)) {
+                    found.push({
+                        method,
+                        path: `/member/:pluginName/${inner.route.path}`.replace(
+                            /\/{2,}/g,
+                            "/",
+                        ),
+                    });
+                }
             }
         } else if (layer.handle.stack) {
             const entry = known.get(layer.handle as never);
@@ -267,6 +290,13 @@ describe("route inventory", () => {
             ["viewer", "PATCH", "/api/v1/customers/x", "customers:write"],
             ["viewer", "DELETE", "/api/v1/customers/x", "customers:write"],
             ["cashier", "GET", "/api/v1/items/update/", "catalog:write"],
+            ["viewer", "GET", "/api/v1/members/", "members:read"],
+            ["cashier", "GET", "/api/v1/members/", "members:read"],
+            ["viewer", "PATCH", "/api/v1/members/x", "members:write"],
+            ["manager", "DELETE", "/api/v1/members/x", "members:admin"],
+            ["manager", "GET", "/api/v1/members/x/export", "members:admin"],
+            ["manager", "GET", "/api/v1/members/sources", "members:admin"],
+            ["manager", "PUT", "/api/v1/members/sources/p/d", "members:admin"],
             ["viewer", "POST", "/api/v1/orders/create", "orders:write"],
             ["viewer", "POST", "/api/v1/orders/x/pay-cash", "orders:write"],
             [
