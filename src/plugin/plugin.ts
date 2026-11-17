@@ -9,6 +9,7 @@ import type {
     AuthProvider,
     PaymentProcessor,
     HookContext,
+    PluginTableHooks,
     HookDefinition,
     HookResult,
     EventDefinition,
@@ -39,6 +40,7 @@ export class Plugin {
     };
     private hookHandlers: Map<string, HookHandler[]> = new Map();
     private eventListeners: Map<string, EventHandler[]> = new Map();
+    private tableHooks: Map<string, PluginTableHooks[]> = new Map();
 
     constructor(
         manifest: PluginManifest,
@@ -113,6 +115,18 @@ export class Plugin {
 
     public getHookHandlers(name: string): HookHandler[] {
         return this.hookHandlers.get(name) ?? [];
+    }
+
+    // ── Table hooks (before/after writes to this plugin's own tables) ──
+
+    public onTable(table: string, hooks: PluginTableHooks): void {
+        const list = this.tableHooks.get(table) ?? [];
+        list.push(hooks);
+        this.tableHooks.set(table, list);
+    }
+
+    public getTableHooks(): Map<string, PluginTableHooks[]> {
+        return this.tableHooks;
     }
 
     // ── Events (post-event, fire and forget) ──
