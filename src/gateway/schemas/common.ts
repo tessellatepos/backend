@@ -38,13 +38,13 @@ export const addressSchema = z.object({
     country: countrySchema,
     name: z.string().optional(),
     organization: z.string().optional(),
-    address_line_1: z.string(),
-    address_line_2: z.string().optional(),
-    dependent_locality: z.string().optional(),
+    addressLine1: z.string(),
+    addressLine2: z.string().optional(),
+    dependentLocality: z.string().optional(),
     locality: z.string().optional(),
     subdivision: z.string().optional(),
-    postal_code: z.string().optional(),
-    sorting_code: z.string().optional(),
+    postalCode: z.string().optional(),
+    sortingCode: z.string().optional(),
 }) satisfies z.ZodType<Address>;
 
 /** An ISO 8601 timestamp as the store writes it. */

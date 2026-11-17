@@ -87,12 +87,12 @@ function mapSquareAddress(address?: SquareAddress): Address | undefined {
     const mapped: Address = {
         // Square can omit the country; the SDK requires one.
         country: (address.country ?? "") as CountryCode,
-        address_line_1: address.addressLine1 ?? "",
-        address_line_2: line2 || undefined,
-        dependent_locality: address.sublocality || undefined,
+        addressLine1: address.addressLine1 ?? "",
+        addressLine2: line2 || undefined,
+        dependentLocality: address.sublocality || undefined,
         locality: address.locality || undefined,
         subdivision: address.administrativeDistrictLevel1 || undefined,
-        postal_code: address.postalCode || undefined,
+        postalCode: address.postalCode || undefined,
     };
     if (!Object.values(mapped).some(Boolean)) return undefined;
     // drop unset keys so the address matches one that came back from JSON
@@ -107,12 +107,12 @@ function mapSquareAddress(address?: SquareAddress): Address | undefined {
 function toSquareAddress(address?: Address): SquareAddress | undefined {
     if (!address) return undefined;
     return {
-        addressLine1: address.address_line_1 || undefined,
-        addressLine2: address.address_line_2 || undefined,
-        sublocality: address.dependent_locality || undefined,
+        addressLine1: address.addressLine1 || undefined,
+        addressLine2: address.addressLine2 || undefined,
+        sublocality: address.dependentLocality || undefined,
         locality: address.locality || undefined,
         administrativeDistrictLevel1: address.subdivision || undefined,
-        postalCode: address.postal_code || undefined,
+        postalCode: address.postalCode || undefined,
         country: (address.country || undefined) as SquareAddress["country"],
     };
 }

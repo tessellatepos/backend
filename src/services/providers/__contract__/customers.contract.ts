@@ -58,9 +58,9 @@ export function customersContract(target: ContractTarget) {
                 tags: ["vip", "tea"],
                 address: {
                     country: "CA",
-                    address_line_1: "1 Main St",
+                    addressLine1: "1 Main St",
                     locality: "Regina",
-                    postal_code: "S4P 1A1",
+                    postalCode: "S4P 1A1",
                 },
             });
             const created = await provider.createCustomer(input);

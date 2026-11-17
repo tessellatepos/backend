@@ -29,11 +29,11 @@ export const locationSchema = z.object({
     name: z.string(),
     address: addressSchema,
     currency: currencySchema,
-    phone_number: z.string(),
-    website_url: z.string(),
+    phoneNumber: z.string(),
+    websiteUrl: z.string(),
     email: z.string(),
     hours: locationHoursSchema,
-    logo_url: z.string(),
+    logoUrl: z.string(),
 }) satisfies z.ZodType<Location>;
 
 export const locationListSchema = z.array(locationSchema);

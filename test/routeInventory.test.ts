@@ -329,9 +329,9 @@ describe("route inventory", () => {
         const device = await createConfigDevice();
         deviceIds.push(device.id);
         await updateConfigDevice(device.id, {
-            pairing_code: null,
-            paired_at: new Date(),
-            square_location: "L1",
+            pairingCode: null,
+            pairedAt: new Date(),
+            squareLocation: "L1",
         });
         const token = (await issueDeviceToken(device.id))!;
         const get = (path: string) => call("GET", path, { token });

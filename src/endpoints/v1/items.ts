@@ -208,7 +208,7 @@ itemRouter.get(
             return;
         }
 
-        const locationId = deviceConfig.square_location;
+        const locationId = deviceConfig.squareLocation;
         if (!locationId) {
             res.status(400).json({
                 message: "Device has no associated location",

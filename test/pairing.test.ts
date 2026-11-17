@@ -102,10 +102,10 @@ describe("device pairing policy", () => {
 
     it("needs devices:admin to approve a pairing", async () => {
         const device = await newDevice();
-        const url = `${DEVICES}/pair-device/${device.pairing_code}`;
+        const url = `${DEVICES}/pair-device/${device.pairingCode}`;
         const body = {
-            device_hardware_id: "hw-1",
-            device_type: "MOBILE_READER",
+            deviceHardwareId: "hw-1",
+            deviceType: "MOBILE_READER",
         };
         assert.equal((await call("PUT", url, { body })).status, 401);
         assert.equal(
@@ -114,12 +114,12 @@ describe("device pairing policy", () => {
         );
         const ok = await call("PUT", url, { cookie: owner, body });
         assert.equal(ok.status, 200);
-        assert.ok((await getConfigDeviceByID(device.id))?.paired_at);
+        assert.ok((await getConfigDeviceByID(device.id))?.pairedAt);
     });
 
     it("limits approvals per client, counting only authorised calls", async () => {
         const device = await newDevice();
-        const url = `${DEVICES}/pair-device/${device.pairing_code}`;
+        const url = `${DEVICES}/pair-device/${device.pairingCode}`;
         for (let i = 0; i < 40; i++) {
             assert.equal((await call("PUT", url, { body: {} })).status, 401);
         }
@@ -137,27 +137,27 @@ describe("device pairing policy", () => {
 
     it("rejects a bad body with 400 naming the rule, not the value", async () => {
         const device = await newDevice();
-        const url = `${DEVICES}/pair-device/${device.pairing_code}`;
+        const url = `${DEVICES}/pair-device/${device.pairingCode}`;
         const cases: [unknown, RegExp][] = [
             [
-                { device_hardware_id: "hw", device_type: "pos" },
-                /device_type must be one of TERMINAL, MOBILE_READER/,
+                { deviceHardwareId: "hw", deviceType: "pos" },
+                /deviceType must be one of TERMINAL, MOBILE_READER/,
             ],
             [
-                { device_hardware_id: "hw", device_type: 5 },
-                /device_type must be one of/,
+                { deviceHardwareId: "hw", deviceType: 5 },
+                /deviceType must be one of/,
             ],
             [
-                { device_type: "TERMINAL" },
-                /device_hardware_id must be a non-empty string/,
+                { deviceType: "TERMINAL" },
+                /deviceHardwareId must be a non-empty string/,
             ],
             [
-                { device_hardware_id: "  " },
-                /device_hardware_id must be a non-empty string/,
+                { deviceHardwareId: "  " },
+                /deviceHardwareId must be a non-empty string/,
             ],
             [
-                { device_hardware_id: 12 },
-                /device_hardware_id must be a non-empty string/,
+                { deviceHardwareId: 12 },
+                /deviceHardwareId must be a non-empty string/,
             ],
         ];
         for (const [body, rule] of cases) {
@@ -168,7 +168,7 @@ describe("device pairing policy", () => {
             assert.ok(!json.message.includes("pos"));
         }
         // still unpaired, and a body that is not an object is a 400 too
-        assert.equal((await getConfigDeviceByID(device.id))?.paired_at, null);
+        assert.equal((await getConfigDeviceByID(device.id))?.pairedAt, null);
         const res = await fetch(server.url + url, {
             method: "PUT",
             headers: { "content-type": "application/json", cookie: owner },
@@ -198,7 +198,7 @@ describe("device pairing policy", () => {
             (
                 await post({
                     deviceId: device.id,
-                    pairingCode: device.pairing_code,
+                    pairingCode: device.pairingCode,
                 })
             ).status,
             429,
@@ -214,7 +214,7 @@ describe("device pairing policy", () => {
                 (
                     await post({
                         deviceId: device.id,
-                        pairingCode: device.pairing_code,
+                        pairingCode: device.pairingCode,
                     })
                 ).status,
                 200,
@@ -234,15 +234,15 @@ describe("device pairing policy", () => {
         }) as typeof process.stdout.write;
         console.log = (...args: unknown[]) => void chunks.push(args.join(" "));
         try {
-            await call("GET", `${DEVICES}/pair-device/${device.pairing_code}`);
+            await call("GET", `${DEVICES}/pair-device/${device.pairingCode}`);
             const fresh = await getConfigDeviceByID(device.id);
-            await call("PUT", `${DEVICES}/pair-device/${fresh!.pairing_code}`, {
+            await call("PUT", `${DEVICES}/pair-device/${fresh!.pairingCode}`, {
                 cookie: owner,
-                body: { device_hardware_id: secret },
+                body: { deviceHardwareId: secret },
             });
             await call("POST", `${DEVICES}/${device.id}`, {
                 cookie: owner,
-                body: { pairing_code: "BODYCOD1", device_hardware_id: secret },
+                body: { pairingCode: "BODYCOD1", deviceHardwareId: secret },
             });
         } finally {
             process.stdout.write = realWrite;
@@ -250,7 +250,7 @@ describe("device pairing policy", () => {
         }
         const logged = chunks.join("\n");
         assert.ok(logged.includes(device.id), "logs name the device id");
-        for (const forbidden of [device.pairing_code!, secret, "BODYCOD1"]) {
+        for (const forbidden of [device.pairingCode!, secret, "BODYCOD1"]) {
             assert.ok(!logged.includes(forbidden), `leaked ${forbidden}`);
         }
     });
@@ -263,7 +263,7 @@ describe("device pairing policy", () => {
         const logCalls = source.match(/logger\.\w+\(([^;]|\n)*?\);/g) ?? [];
         assert.ok(logCalls.length > 3);
         for (const call of logCalls) {
-            assert.ok(!/pairingCode|pairing_code|req\.body/.test(call), call);
+            assert.ok(!/pairingCode|pairingCode|req\.body/.test(call), call);
         }
     });
 });

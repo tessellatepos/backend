@@ -74,9 +74,9 @@ describe("device tokens", () => {
         deviceIds.push(device.id);
         if (paired) {
             await updateConfigDevice(device.id, {
-                pairing_code: null,
-                paired_at: new Date(),
-                square_location: location,
+                pairingCode: null,
+                pairedAt: new Date(),
+                squareLocation: location,
             });
         }
         return device;
@@ -118,7 +118,7 @@ describe("device tokens", () => {
         const device = await newDevice();
         const res = await post({
             deviceId: device.id,
-            pairingCode: device.pairing_code,
+            pairingCode: device.pairingCode,
         });
         assert.equal(res.status, 200);
         const { token } = (await res.json()) as { token: string };
@@ -138,9 +138,9 @@ describe("device tokens", () => {
         assert.equal(await me("/me", token), null);
 
         await updateConfigDevice(device.id, {
-            pairing_code: null,
-            paired_at: new Date(),
-            square_location: "LOC123",
+            pairingCode: null,
+            pairedAt: new Date(),
+            squareLocation: "LOC123",
         });
         const p = await me("/me", token);
         assert.deepEqual(p, {

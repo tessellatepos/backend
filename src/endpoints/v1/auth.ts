@@ -96,7 +96,7 @@ authRouter.post("/device-token", async (req, res) => {
     const hasProof =
         isAdmin ||
         (!!device &&
-            pairingCodeMatches(req.body?.pairingCode, device.pairing_code));
+            pairingCodeMatches(req.body?.pairingCode, device.pairingCode));
     // Same answer for "no such device" and "wrong proof", so ids can't be probed.
     if (!hasProof) {
         exchangeFailures.record(key);
@@ -105,7 +105,7 @@ authRouter.post("/device-token", async (req, res) => {
     }
     // A LOCAL till runs in a staff browser on the staff session; it has no
     // token. Refused even for devices:admin.
-    if (device?.device_type === "LOCAL") {
+    if (device?.deviceType === "LOCAL") {
         res.status(400).json({
             message: "Local tills do not use device tokens",
         });

@@ -96,9 +96,9 @@ describe("websocket authentication", () => {
         const device = await createConfigDevice();
         deviceIds.push(device.id);
         await updateConfigDevice(device.id, {
-            pairing_code: null,
-            paired_at: new Date(),
-            square_location: location,
+            pairingCode: null,
+            pairedAt: new Date(),
+            squareLocation: location,
         });
         return (await issueDeviceToken(device.id))!;
     }

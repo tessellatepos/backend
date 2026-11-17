@@ -120,14 +120,14 @@ configDeviceRouter.get(
             logger.info(`Refreshing the pairing code of device ${config.id}`);
             const newConfig = {
                 id: config.id,
-                created_at: config.created_at,
-                pairing_code: generatePairingCode(),
-                code_created_at: new Date(),
-                paired_at: null,
-                square_location: config.square_location,
-                customer_facing: config.customer_facing,
-                device_hardware_id: config.device_hardware_id,
-                device_type: config.device_type,
+                createdAt: config.createdAt,
+                pairingCode: generatePairingCode(),
+                codeCreatedAt: new Date(),
+                pairedAt: null,
+                squareLocation: config.squareLocation,
+                customerFacing: config.customerFacing,
+                deviceHardwareId: config.deviceHardwareId,
+                deviceType: config.deviceType,
             };
             await updateConfigDevice(config.id, newConfig);
             res.json(newConfig);
@@ -188,8 +188,8 @@ configDeviceRouter.put(
         ) as Partial<IConfigDevice>;
 
         if (
-            typeof updatedConfig.device_hardware_id !== "string" ||
-            !updatedConfig.device_hardware_id.trim()
+            typeof updatedConfig.deviceHardwareId !== "string" ||
+            !updatedConfig.deviceHardwareId.trim()
         ) {
             res.status(400).json({
                 message: "device_hardware_id must be a non-empty string",
@@ -197,14 +197,14 @@ configDeviceRouter.put(
             return;
         }
         if (
-            updatedConfig.device_type !== undefined &&
-            updatedConfig.device_type !== null &&
+            updatedConfig.deviceType !== undefined &&
+            updatedConfig.deviceType !== null &&
             !(PAIRABLE_TYPES as readonly unknown[]).includes(
-                updatedConfig.device_type,
+                updatedConfig.deviceType,
             )
         ) {
             res.status(400).json({
-                message: `device_type must be one of ${PAIRABLE_TYPES.join(", ")}`,
+                message: `deviceType must be one of ${PAIRABLE_TYPES.join(", ")}`,
             });
             return;
         }
@@ -214,17 +214,17 @@ configDeviceRouter.put(
             logger.info(`Received PUT request to pair device ${dbConfig.id}`);
         }
 
-        if (dbConfig != undefined && !dbConfig.paired_at) {
+        if (dbConfig != undefined && !dbConfig.pairedAt) {
             const newConfig = {
                 id: dbConfig.id,
-                created_at: dbConfig.created_at,
-                pairing_code: null,
-                code_created_at: null,
-                paired_at: new Date(),
-                square_location: dbConfig.square_location,
-                customer_facing: dbConfig.customer_facing,
-                device_hardware_id: updatedConfig.device_hardware_id,
-                device_type: updatedConfig.device_type ?? dbConfig.device_type,
+                createdAt: dbConfig.createdAt,
+                pairingCode: null,
+                codeCreatedAt: null,
+                pairedAt: new Date(),
+                squareLocation: dbConfig.squareLocation,
+                customerFacing: dbConfig.customerFacing,
+                deviceHardwareId: updatedConfig.deviceHardwareId,
+                deviceType: updatedConfig.deviceType ?? dbConfig.deviceType,
             };
             await updateConfigDevice(dbConfig.id, newConfig);
             res.json(newConfig);
@@ -259,9 +259,9 @@ configDeviceRouter.get(
         if (principal && !hasScope(principal, "devices:read")) {
             const allowed = principal.location_ids;
             const visible =
-                config?.device_type === "LOCAL" &&
+                config?.deviceType === "LOCAL" &&
                 (allowed === "all" ||
-                    allowed.includes(config.square_location ?? ""));
+                    allowed.includes(config.squareLocation ?? ""));
             if (!visible) {
                 res.status(403).json({ message: "Forbidden" });
                 return;
@@ -395,14 +395,14 @@ configDeviceRouter.post(
         }
 
         // A LOCAL till has no card hardware; pairing would turn it into one.
-        if (config.device_type === "LOCAL") {
+        if (config.deviceType === "LOCAL") {
             res.status(400).json({
                 message: "Local tills have no terminal to pair",
             });
             return;
         }
 
-        const locationId = req.body?.locationId || config.square_location;
+        const locationId = req.body?.locationId || config.squareLocation;
         if (!locationId) {
             res.status(400).json({
                 message: "A Square location is required to pair a terminal",
@@ -423,10 +423,10 @@ configDeviceRouter.post(
         }
 
         await updateConfigDevice(deviceId, {
-            device_type: "TERMINAL",
-            square_location: locationId,
-            square_device_code_id: deviceCode.id,
-            square_pair_by: deviceCode.pairBy
+            deviceType: "TERMINAL",
+            squareLocation: locationId,
+            squareDeviceCodeId: deviceCode.id,
+            squarePairBy: deviceCode.pairBy
                 ? new Date(deviceCode.pairBy)
                 : null,
         });
@@ -460,7 +460,7 @@ configDeviceRouter.get(
         }
 
         const config = await getConfigDeviceByID(deviceId);
-        if (!config?.square_device_code_id) {
+        if (!config?.squareDeviceCodeId) {
             res.status(404).json({
                 message: "No pending Square pairing for this device",
             });
@@ -468,7 +468,7 @@ configDeviceRouter.get(
         }
 
         const deviceCode = await provider.getDeviceCode(
-            config.square_device_code_id,
+            config.squareDeviceCodeId,
         );
         if (!deviceCode) {
             res.status(404).json({ message: "Square pairing not found" });
@@ -477,10 +477,10 @@ configDeviceRouter.get(
 
         if (deviceCode.status === "PAIRED" && deviceCode.deviceId) {
             await updateConfigDevice(deviceId, {
-                square_device_id: deviceCode.deviceId,
-                square_device_code_id: null,
-                square_pair_by: null,
-                paired_at: new Date(),
+                squareDeviceId: deviceCode.deviceId,
+                squareDeviceCodeId: null,
+                squarePairBy: null,
+                pairedAt: new Date(),
             });
         }
 

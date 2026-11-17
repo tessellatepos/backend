@@ -174,7 +174,7 @@ squareRouter.post(
             }
 
             const device = await getConfigDeviceByID(deviceId);
-            if (!device?.paired_at) {
+            if (!device?.pairedAt) {
                 logger.warn(
                     `Rejected mobile token request from unpaired device ${deviceId}`,
                 );
@@ -182,7 +182,7 @@ squareRouter.post(
                 return;
             }
             // A LOCAL till has no reader; it must not get a Square token.
-            if (device.device_type === "LOCAL") {
+            if (device.deviceType === "LOCAL") {
                 res.status(400).json({
                     message: "Local tills have no mobile reader",
                 });
@@ -192,7 +192,7 @@ squareRouter.post(
             const token = await getShortLivedAccessToken();
 
             // A device pinned to a location overrides the deployment default.
-            const locationId = device.square_location ?? token.locationId;
+            const locationId = device.squareLocation ?? token.locationId;
             if (!locationId) {
                 res.status(409).json({
                     message: "No Square location is configured",

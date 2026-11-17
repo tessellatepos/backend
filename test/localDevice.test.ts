@@ -146,12 +146,12 @@ describe("LOCAL devices (cash-only tills in a staff browser)", () => {
                 { locationId: location.id },
             );
             assert.equal(created.status, 201);
-            assert.equal(created.body.device_type, "LOCAL");
-            assert.equal(created.body.square_location, location.id);
-            assert.equal(created.body.pairing_code, null);
-            assert.equal(created.body.code_created_at, null);
-            assert.ok(created.body.paired_at);
-            assert.equal(created.body.device_hardware_id, null);
+            assert.equal(created.body.deviceType, "LOCAL");
+            assert.equal(created.body.squareLocation, location.id);
+            assert.equal(created.body.pairingCode, null);
+            assert.equal(created.body.codeCreatedAt, null);
+            assert.ok(created.body.pairedAt);
+            assert.equal(created.body.deviceHardwareId, null);
             assert.ok(!("device_token_hash" in created.body));
             deviceIds.push(created.body.id);
 
@@ -233,8 +233,8 @@ describe("LOCAL devices (cash-only tills in a staff browser)", () => {
             deviceIds.push(created.body.deviceId);
 
             const device = await getConfigDeviceByID(created.body.deviceId);
-            assert.equal(device?.device_type, "LOCAL");
-            assert.equal(device?.square_location, created.body.id);
+            assert.equal(device?.deviceType, "LOCAL");
+            assert.equal(device?.squareLocation, created.body.id);
 
             const listed = await call(
                 "owner",
@@ -330,11 +330,11 @@ describe("LOCAL devices (cash-only tills in a staff browser)", () => {
                 "owner",
                 "PUT",
                 "/api/v1/config/devices/pair-device/ANYCODE1",
-                { device_hardware_id: "hw-1", device_type: "LOCAL" },
+                { deviceHardwareId: "hw-1", deviceType: "LOCAL" },
             );
             assert.equal(paired.status, 400);
             assert.equal(
-                (await getConfigDeviceByID(till.body.id))?.device_hardware_id,
+                (await getConfigDeviceByID(till.body.id))?.deviceHardwareId,
                 null,
             );
         });
@@ -357,7 +357,7 @@ describe("LOCAL devices (cash-only tills in a staff browser)", () => {
             const row = listed.body.find(
                 (d: { id: string }) => d.id === till.body.id,
             );
-            assert.equal(row.device_type, "LOCAL");
+            assert.equal(row.deviceType, "LOCAL");
             assert.ok(!("device_token_hash" in row));
 
             const terminal = await getPairedDeviceByType("TERMINAL");
@@ -417,8 +417,8 @@ describe("LOCAL devices (cash-only tills in a staff browser)", () => {
                     `/api/v1/config/devices/${till.body.id}`,
                 );
                 assert.equal(own.status, 200, role);
-                assert.equal(own.body.device_type, "LOCAL");
-                assert.equal(own.body.pairing_code, null);
+                assert.equal(own.body.deviceType, "LOCAL");
+                assert.equal(own.body.pairingCode, null);
 
                 const other = await call(
                     role,
@@ -461,7 +461,7 @@ describe("LOCAL devices (cash-only tills in a staff browser)", () => {
                 "owner",
                 "POST",
                 `/api/v1/config/devices/${tillB.body.id}`,
-                { square_location: a.id },
+                { squareLocation: a.id },
             );
             assert.equal(res.status, 409, JSON.stringify(res.body));
             assert.match(res.body.message, /already has a local till/);

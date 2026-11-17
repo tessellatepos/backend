@@ -304,21 +304,21 @@ function mapSquareLocation(
         address: {
             country,
             organization: location.businessName ?? undefined,
-            address_line_1: address?.addressLine1 ?? "",
-            address_line_2: addressLine2 || undefined,
-            dependent_locality: address?.sublocality ?? undefined,
+            addressLine1: address?.addressLine1 ?? "",
+            addressLine2: addressLine2 || undefined,
+            dependentLocality: address?.sublocality ?? undefined,
             locality: address?.locality ?? undefined,
             subdivision: address?.administrativeDistrictLevel1 ?? undefined,
-            postal_code: address?.postalCode ?? undefined,
+            postalCode: address?.postalCode ?? undefined,
         },
         currency:
             (location.currency as CurrencyCode | undefined) ??
             COUNTRIES[country]?.currency,
-        phone_number: location.phoneNumber ?? "",
-        website_url: location.websiteUrl ?? "",
+        phoneNumber: location.phoneNumber ?? "",
+        websiteUrl: location.websiteUrl ?? "",
         email: location.businessEmail ?? "",
         hours: mapSquareHours(location),
-        logo_url: location.logoUrl ?? "",
+        logoUrl: location.logoUrl ?? "",
     };
 }
 

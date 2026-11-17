@@ -127,10 +127,10 @@ export async function getSetupStatus(): Promise<SetupStatus> {
                 // paired device for the setup checklist.
                 .where(
                     and(
-                        isNotNull(configDevicesTable.paired_at),
+                        isNotNull(configDevicesTable.pairedAt),
                         or(
-                            isNull(configDevicesTable.device_type),
-                            ne(configDevicesTable.device_type, "LOCAL"),
+                            isNull(configDevicesTable.deviceType),
+                            ne(configDevicesTable.deviceType, "LOCAL"),
                         ),
                     ),
                 )
@@ -377,11 +377,11 @@ async function insertLocation(
         name,
         address,
         currency,
-        phone_number: "",
-        website_url: "",
+        phoneNumber: "",
+        websiteUrl: "",
         email: "",
         hours: EMPTY_HOURS,
-        logo_url: "",
+        logoUrl: "",
     });
 }
 
