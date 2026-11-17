@@ -40,13 +40,11 @@ async function sessionCookie(role: "owner" | "viewer") {
 describe("device pairing policy", () => {
     let server: TestApp;
     let owner: string;
-    let viewer: string;
     const deviceIds: string[] = [];
 
     before(async () => {
         await migrateTestDb();
         owner = await sessionCookie("owner");
-        viewer = await sessionCookie("viewer");
         server = await startTestApp((app) => {
             app.use("/api/v1/auth", authv1Endpoint.router);
             app.use(DEVICES, configDevicev1Endpoint.router);
@@ -100,39 +98,29 @@ describe("device pairing policy", () => {
         assert.ok(Number(limited.headers.get("retry-after")) >= 1);
     });
 
-    it("needs devices:admin to approve a pairing", async () => {
+    it("lets a device complete its pairing with the code, no login", async () => {
         const device = await newDevice();
         const url = `${DEVICES}/pair-device/${device.pairingCode}`;
         const body = {
             deviceHardwareId: "hw-1",
             deviceType: "MOBILE_READER",
         };
-        assert.equal((await call("PUT", url, { body })).status, 401);
-        assert.equal(
-            (await call("PUT", url, { cookie: viewer, body })).status,
-            403,
-        );
-        const ok = await call("PUT", url, { cookie: owner, body });
+        const ok = await call("PUT", url, { body });
         assert.equal(ok.status, 200);
+        const { token } = (await ok.json()) as { token: string };
+        assert.match(token, /^tsd_/);
         assert.ok((await getConfigDeviceByID(device.id))?.pairedAt);
+        // the code is spent: a second attempt with it fails
+        assert.equal((await call("PUT", url, { body })).status, 400);
     });
 
-    it("limits approvals per client, counting only authorised calls", async () => {
+    it("limits pairing completions per client", async () => {
         const device = await newDevice();
         const url = `${DEVICES}/pair-device/${device.pairingCode}`;
-        for (let i = 0; i < 40; i++) {
-            assert.equal((await call("PUT", url, { body: {} })).status, 401);
-        }
         for (let i = 0; i < PAIR_APPROVE_MAX; i++) {
-            assert.equal(
-                (await call("PUT", url, { cookie: owner, body: {} })).status,
-                400,
-            );
+            assert.equal((await call("PUT", url, { body: {} })).status, 400);
         }
-        assert.equal(
-            (await call("PUT", url, { cookie: owner, body: {} })).status,
-            429,
-        );
+        assert.equal((await call("PUT", url, { body: {} })).status, 429);
     });
 
     it("rejects a bad body with 400 naming the rule, not the value", async () => {

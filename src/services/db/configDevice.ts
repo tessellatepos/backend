@@ -62,7 +62,7 @@ export async function getConfigDeviceByTokenHash(
     const deviceConfig = await db
         .select()
         .from(configDevicesTable)
-        .where(eq(configDevicesTable.device_token_hash, tokenHash))
+        .where(eq(configDevicesTable.deviceTokenHash, tokenHash))
         .limit(1);
     return deviceConfig[0] || null;
 }
@@ -70,14 +70,14 @@ export async function getConfigDeviceByTokenHash(
 /**
  * Drops the token hash so a device record is safe to send to clients.
  * @param device a devices row
- * @returns the row without `device_token_hash`
+ * @returns the row without `deviceTokenHash`
  */
 export function withoutTokenHash<T extends object>(
     device: T,
-): Omit<T, "device_token_hash"> {
+): Omit<T, "deviceTokenHash"> {
     const rest = { ...device } as Record<string, unknown>;
-    delete rest.device_token_hash;
-    return rest as Omit<T, "device_token_hash">;
+    delete rest.deviceTokenHash;
+    return rest as Omit<T, "deviceTokenHash">;
 }
 
 /**

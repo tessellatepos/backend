@@ -152,7 +152,7 @@ describe("LOCAL devices (cash-only tills in a staff browser)", () => {
             assert.equal(created.body.codeCreatedAt, null);
             assert.ok(created.body.pairedAt);
             assert.equal(created.body.deviceHardwareId, null);
-            assert.ok(!("device_token_hash" in created.body));
+            assert.ok(!("deviceTokenHash" in created.body));
             deviceIds.push(created.body.id);
 
             const again = await call(
@@ -358,7 +358,7 @@ describe("LOCAL devices (cash-only tills in a staff browser)", () => {
                 (d: { id: string }) => d.id === till.body.id,
             );
             assert.equal(row.deviceType, "LOCAL");
-            assert.ok(!("device_token_hash" in row));
+            assert.ok(!("deviceTokenHash" in row));
 
             const terminal = await getPairedDeviceByType("TERMINAL");
             const reader = await getPairedDeviceByType("MOBILE_READER");

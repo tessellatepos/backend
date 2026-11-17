@@ -15,6 +15,7 @@ import {
 } from "@/services/db/configDevice";
 import { getLocationById } from "@/services/db/locations";
 import { type IConfigDevice } from "@tessellatepos/sdk";
+import { issueDeviceToken } from "@/auth/deviceToken";
 import { getParamValue } from "@/utils/expressHelpers";
 import { hasScope, requireScope } from "@/middleware/authenticate";
 import { ITessellateApiRouter } from "@/utils/registry/api/apiRegistry";
@@ -64,9 +65,10 @@ export function resetPairingLimits(): void {
 //  - Requesting a code (GET /pair-device/) is public, because a device has no
 //    credentials yet, and is rate limited per IP. So is refreshing a code
 //    (GET /pair-device/:code), which also needs the current code.
-//  - Approving a pairing (PUT /pair-device/:code) needs devices:admin and is
-//    rate limited too. Deleting a pairing and every other device mutation
-//    need devices:admin.
+//  - Completing a pairing (PUT /pair-device/:code) needs no login: the live
+//    pairing code is the proof, a one-time secret that pairing clears. It is
+//    rate limited per client IP too. Deleting a pairing and every other
+//    device mutation need devices:admin.
 //  - The token exchange (POST /auth/device-token) needs the device's live
 //    pairing code or devices:admin, and failed attempts are rate limited.
 // The pairing code is a one-time secret: it is never written to a log line.
@@ -171,7 +173,6 @@ configDeviceRouter.delete(
 
 configDeviceRouter.put(
     "/pair-device/:pairingCode",
-    requireScope("devices:admin"),
     rateLimit(approveLimiter),
     async (req: Request, res: Response) => {
         const pairingCode = getParamValue(req.params.pairingCode);
@@ -192,7 +193,7 @@ configDeviceRouter.put(
             !updatedConfig.deviceHardwareId.trim()
         ) {
             res.status(400).json({
-                message: "device_hardware_id must be a non-empty string",
+                message: "deviceHardwareId must be a non-empty string",
             });
             return;
         }
@@ -227,7 +228,9 @@ configDeviceRouter.put(
                 deviceType: updatedConfig.deviceType ?? dbConfig.deviceType,
             };
             await updateConfigDevice(dbConfig.id, newConfig);
-            res.json(newConfig);
+            // Returned once: the device's credential for later calls.
+            const token = await issueDeviceToken(dbConfig.id);
+            res.json({ ...newConfig, token });
         } else {
             res.status(400).json({
                 message: "Invalid pairing code or device already paired",

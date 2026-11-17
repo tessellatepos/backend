@@ -45,6 +45,7 @@ const PUBLIC = [
     // a device with no credentials asks for (and refreshes) a pairing code
     "GET /api/v1/config/devices/pair-device/",
     "GET /api/v1/config/devices/pair-device/:pairingCode",
+    "PUT /api/v1/config/devices/pair-device/:pairingCode",
     // the gateway API description is public, read-only and rate limited
     "GET /gateway/v1/openapi.json",
     "GET /gateway/v1/docs",

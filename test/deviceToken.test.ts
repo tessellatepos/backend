@@ -124,12 +124,12 @@ describe("device tokens", () => {
         const { token } = (await res.json()) as { token: string };
         assert.match(token, /^tsd_[A-Za-z0-9_-]{43}$/);
         const row = await getConfigDeviceByID(device.id);
-        assert.equal(row?.device_token_hash, hashDeviceToken(token));
+        assert.equal(row?.deviceTokenHash, hashDeviceToken(token));
         assert.ok(
             !JSON.stringify(row).includes(token),
             "plaintext token must not be stored",
         );
-        assert.ok(!("device_token_hash" in withoutTokenHash(row!)));
+        assert.ok(!("deviceTokenHash" in withoutTokenHash(row!)));
     });
 
     it("resolves only once the device is paired, pinned to its location", async () => {
@@ -204,7 +204,7 @@ describe("device tokens", () => {
         assert.equal(ok.status, 200);
         assert.equal(await me("/me", token), null);
         assert.equal(
-            (await getConfigDeviceByID(device.id))?.device_token_hash,
+            (await getConfigDeviceByID(device.id))?.deviceTokenHash,
             null,
         );
 

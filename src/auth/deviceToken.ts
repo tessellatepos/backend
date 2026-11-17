@@ -59,7 +59,7 @@ export async function issueDeviceToken(
     if (!(await getConfigDeviceByID(deviceId))) return null;
     const token = DEVICE_TOKEN_PREFIX + randomBytes(32).toString("base64url");
     await updateConfigDevice(deviceId, {
-        device_token_hash: hashDeviceToken(token),
+        deviceTokenHash: hashDeviceToken(token),
     });
     return token;
 }
@@ -71,7 +71,7 @@ export async function issueDeviceToken(
  */
 export async function revokeDeviceToken(deviceId: string): Promise<boolean> {
     if (!(await getConfigDeviceByID(deviceId))) return false;
-    await updateConfigDevice(deviceId, { device_token_hash: null });
+    await updateConfigDevice(deviceId, { deviceTokenHash: null });
     return true;
 }
 

@@ -42,7 +42,7 @@ export const configDevicesTable = pgTable(
         squareDeviceCodeId: text("square_device_code_id"),
         squarePairBy: timestamp("square_pair_by", { withTimezone: true }),
         // sha-256 (hex) of the device's API token; the token itself is never stored.
-        device_token_hash: text("device_token_hash").unique(),
+        deviceTokenHash: text("device_token_hash").unique(),
     },
     (table) => [
         // At most one LOCAL till per location, so concurrent creates cannot race.
